@@ -1,0 +1,47 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: sales-service
+  
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:trabix_db}
+    username: ${DB_USER:trabix_admin}
+    password: ${DB_PASSWORD:trabix_secure_2024}
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+# Configuración JWT
+jwt:
+  secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits}
+
+# Configuración de precios de venta
+trabix:
+  precios:
+    unidad: 8000       # Con licor
+    promo: 6000        # 2x1 ($12,000 / 2)
+    sin-licor: 7000    # Sin licor
+    regalo: 0          # Degustación/cortesía
+  # Límite de regalos por tanda (porcentaje del stock)
+  limite-regalos-porcentaje: 8
+
+# OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Logging
+logging:
+  level:
+    com.trabix: DEBUG
