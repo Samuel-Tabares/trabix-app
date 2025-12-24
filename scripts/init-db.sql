@@ -89,17 +89,22 @@ CREATE INDEX idx_ventas_fecha ON ventas(fecha_registro);
 
 -- Cuadres
 CREATE TABLE cuadres (
-    id BIGSERIAL PRIMARY KEY,
-    tanda_id BIGINT NOT NULL REFERENCES tandas(id) ON DELETE CASCADE,
-    tipo VARCHAR(20) NOT NULL,
-    monto_esperado DECIMAL(12,2) NOT NULL,
-    monto_recibido DECIMAL(12,2) DEFAULT 0,
-    excedente DECIMAL(12,2) DEFAULT 0,
-    fecha TIMESTAMP,
-    estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
-    texto_whatsapp TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                         id BIGSERIAL PRIMARY KEY,
+                         tanda_id BIGINT NOT NULL REFERENCES tandas(id) ON DELETE CASCADE,
+                         tipo VARCHAR(20) NOT NULL,
+                         monto_esperado DECIMAL(12,2) NOT NULL,
+                         monto_recibido DECIMAL(12,2) DEFAULT 0,
+                         excedente DECIMAL(12,2) DEFAULT 0,
+                         fecha TIMESTAMP,
+                         estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                         texto_whatsapp TEXT,
+    -- Nuevas columnas para billing-service
+                         total_recaudado DECIMAL(12,2),
+                         monto_vendedor DECIMAL(12,2),
+                         monto_cascada DECIMAL(12,2),
+                         excedente_anterior DECIMAL(12,2) DEFAULT 0,
+                         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_cuadres_tanda ON cuadres(tanda_id);
