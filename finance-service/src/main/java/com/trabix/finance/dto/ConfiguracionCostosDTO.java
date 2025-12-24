@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * DTO para configuración de costos.
+ * DTOs para configuración de costos.
  */
 public class ConfiguracionCostosDTO {
 
@@ -51,7 +51,7 @@ public class ConfiguracionCostosDTO {
     }
 
     /**
-     * Vista simplificada para vendedores (solo ven costo percibido).
+     * Vista simplificada para vendedores.
      */
     @Data
     @Builder

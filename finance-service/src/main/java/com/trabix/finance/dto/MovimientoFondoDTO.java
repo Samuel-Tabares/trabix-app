@@ -4,6 +4,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * DTOs para Movimientos del Fondo.
@@ -42,7 +43,7 @@ public class MovimientoFondoDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ListResponse {
-        private java.util.List<Response> movimientos;
+        private List<Response> movimientos;
         private int pagina;
         private int tamano;
         private long totalElementos;

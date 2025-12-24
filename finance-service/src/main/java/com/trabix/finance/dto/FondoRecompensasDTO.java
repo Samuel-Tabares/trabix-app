@@ -38,10 +38,7 @@ public class FondoRecompensasDTO {
         @NotBlank(message = "La descripción es requerida")
         private String descripcion;
         
-        /** Referencia opcional (ID de lote o cuadre) */
         private Long referenciaId;
-        
-        /** Tipo de referencia: CUADRE, LOTE, MANUAL */
         private String referenciaTipo;
     }
 

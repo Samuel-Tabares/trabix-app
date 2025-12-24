@@ -17,7 +17,7 @@ public class Usuario {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String cedula;
 
     @Column(nullable = false)
@@ -34,11 +34,4 @@ public class Usuario {
 
     @Column(nullable = false)
     private String estado;
-
-    /**
-     * Verifica si es admin.
-     */
-    public boolean esAdmin() {
-        return "ADMIN".equals(rol) || "N1".equals(nivel);
-    }
 }

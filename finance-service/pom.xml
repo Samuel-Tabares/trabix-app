@@ -12,7 +12,7 @@
 
     <artifactId>finance-service</artifactId>
     <packaging>jar</packaging>
-    <description>Servicio de finanzas: costos variables, inversiones, fondo de recompensas</description>
+    <description>Servicio de finanzas: costos variables, fondo de recompensas</description>
 
     <dependencies>
         <!-- Módulo común -->
@@ -65,12 +65,6 @@
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
         </dependency>
-
-        <!-- OpenAPI -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-        </dependency>
     </dependencies>
 
     <build>
@@ -81,5 +75,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>

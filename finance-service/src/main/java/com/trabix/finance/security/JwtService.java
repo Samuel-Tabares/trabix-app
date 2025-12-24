@@ -12,7 +12,6 @@ import java.util.Date;
 
 /**
  * Servicio para validar tokens JWT.
- * Solo valida, no genera (eso lo hace auth-service).
  */
 @Slf4j
 @Service
@@ -42,12 +41,8 @@ public class JwtService {
         }
     }
 
-    public boolean esTokenExpirado(String token) {
-        return extraerExpiracion(token).before(new Date());
-    }
-
-    public Date extraerExpiracion(String token) {
-        return extraerClaims(token).getExpiration();
+    private boolean esTokenExpirado(String token) {
+        return extraerClaims(token).getExpiration().before(new Date());
     }
 
     private Claims extraerClaims(String token) {

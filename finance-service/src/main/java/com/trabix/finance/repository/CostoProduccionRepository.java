@@ -15,26 +15,9 @@ import java.util.List;
 @Repository
 public interface CostoProduccionRepository extends JpaRepository<CostoProduccion, Long> {
 
-    // === Consultas básicas ===
-    
-    List<CostoProduccion> findByTipoOrderByFechaDesc(String tipo);
-    
     Page<CostoProduccion> findByTipo(String tipo, Pageable pageable);
     
-    // === Consultas por rango de fechas ===
-    
-    List<CostoProduccion> findByFechaBetweenOrderByFechaDesc(
-            LocalDateTime desde, LocalDateTime hasta);
-    
-    Page<CostoProduccion> findByFechaBetween(
-            LocalDateTime desde, LocalDateTime hasta, Pageable pageable);
-    
-    // === Consultas por tipo y fecha ===
-    
-    List<CostoProduccion> findByTipoAndFechaBetweenOrderByFechaDesc(
-            String tipo, LocalDateTime desde, LocalDateTime hasta);
-    
-    // === Búsqueda por concepto ===
+    Page<CostoProduccion> findByFechaBetween(LocalDateTime desde, LocalDateTime hasta, Pageable pageable);
     
     @Query("""
         SELECT c FROM CostoProduccion c 
@@ -43,71 +26,27 @@ public interface CostoProduccionRepository extends JpaRepository<CostoProduccion
         """)
     List<CostoProduccion> buscarPorConcepto(@Param("concepto") String concepto);
     
-    // === Estadísticas ===
-    
-    /** Suma total de costos */
     @Query("SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c")
     BigDecimal sumarTotalCostos();
     
-    /** Suma costos por tipo */
-    @Query("""
-        SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c 
-        WHERE c.tipo = :tipo
-        """)
+    @Query("SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c WHERE c.tipo = :tipo")
     BigDecimal sumarCostosPorTipo(@Param("tipo") String tipo);
     
-    /** Suma costos en un período */
-    @Query("""
-        SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c 
-        WHERE c.fecha BETWEEN :desde AND :hasta
-        """)
-    BigDecimal sumarCostosPeriodo(
-            @Param("desde") LocalDateTime desde, 
-            @Param("hasta") LocalDateTime hasta);
+    @Query("SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c WHERE c.fecha BETWEEN :desde AND :hasta")
+    BigDecimal sumarCostosPeriodo(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
     
-    /** Suma costos por tipo en un período */
-    @Query("""
-        SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c 
-        WHERE c.tipo = :tipo 
-        AND c.fecha BETWEEN :desde AND :hasta
-        """)
-    BigDecimal sumarCostosPorTipoYPeriodo(
-            @Param("tipo") String tipo,
-            @Param("desde") LocalDateTime desde, 
-            @Param("hasta") LocalDateTime hasta);
+    @Query("SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c WHERE c.tipo = :tipo AND c.fecha BETWEEN :desde AND :hasta")
+    BigDecimal sumarCostosPorTipoYPeriodo(@Param("tipo") String tipo, @Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
     
-    /** Cuenta registros por tipo */
     long countByTipo(String tipo);
     
-    /** Obtiene resumen por tipo (tipo, count, total) */
-    @Query("""
-        SELECT c.tipo, COUNT(c), COALESCE(SUM(c.costoTotal), 0) 
-        FROM CostoProduccion c 
-        GROUP BY c.tipo
-        """)
+    long countByFechaBetween(LocalDateTime desde, LocalDateTime hasta);
+    
+    @Query("SELECT c.tipo, COUNT(c), COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c GROUP BY c.tipo")
     List<Object[]> obtenerResumenPorTipo();
     
-    /** Obtiene resumen por tipo en un período */
-    @Query("""
-        SELECT c.tipo, COUNT(c), COALESCE(SUM(c.costoTotal), 0) 
-        FROM CostoProduccion c 
-        WHERE c.fecha BETWEEN :desde AND :hasta
-        GROUP BY c.tipo
-        """)
-    List<Object[]> obtenerResumenPorTipoPeriodo(
-            @Param("desde") LocalDateTime desde, 
-            @Param("hasta") LocalDateTime hasta);
+    @Query("SELECT c.tipo, COUNT(c), COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c WHERE c.fecha BETWEEN :desde AND :hasta GROUP BY c.tipo")
+    List<Object[]> obtenerResumenPorTipoPeriodo(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
     
-    /** Obtiene los últimos N registros */
     List<CostoProduccion> findTop10ByOrderByFechaDesc();
-    
-    /** Costos por proveedor */
-    List<CostoProduccion> findByProveedorOrderByFechaDesc(String proveedor);
-    
-    /** Suma costos por proveedor */
-    @Query("""
-        SELECT COALESCE(SUM(c.costoTotal), 0) FROM CostoProduccion c 
-        WHERE c.proveedor = :proveedor
-        """)
-    BigDecimal sumarCostosPorProveedor(@Param("proveedor") String proveedor);
 }

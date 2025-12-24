@@ -14,12 +14,11 @@ public interface FondoRecompensasRepository extends JpaRepository<FondoRecompens
     /**
      * Obtiene el fondo principal (solo hay uno).
      */
-    @Query("SELECT f FROM FondoRecompensas f ORDER BY f.id ASC LIMIT 1")
-    Optional<FondoRecompensas> findPrincipal();
+    Optional<FondoRecompensas> findFirstByOrderByIdAsc();
 
     /**
      * Obtiene el saldo actual del fondo.
      */
-    @Query("SELECT f.saldoActual FROM FondoRecompensas f ORDER BY f.id ASC LIMIT 1")
+    @Query("SELECT f.saldoActual FROM FondoRecompensas f ORDER BY f.id ASC")
     Optional<BigDecimal> obtenerSaldoActual();
 }

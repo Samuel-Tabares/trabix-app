@@ -36,26 +36,22 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
-                // Endpoints públicos (documentación)
+                // Endpoints públicos
                 .requestMatchers(
-                    "/api-docs/**",
-                    "/swagger-ui/**",
-                    "/swagger-ui.html",
-                    "/actuator/health"
+                    "/actuator/health",
+                    "/error"
                 ).permitAll()
                 
                 // === Configuración de Costos - Solo ADMIN ===
-                .requestMatchers("/costos/configuracion/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/costos/produccion").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT, "/costos/produccion/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.DELETE, "/costos/produccion/**").hasRole("ADMIN")
+                .requestMatchers("/costos/configuracion").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/costos/configuracion").hasRole("ADMIN")
+                .requestMatchers("/costos/configuracion/vendedor").authenticated()
+                
+                // === Costos de Producción - Solo ADMIN ===
+                .requestMatchers("/costos/produccion/**").hasRole("ADMIN")
                 
                 // === Fondo de Recompensas ===
-                // Gestión del fondo solo admin
-                .requestMatchers(HttpMethod.POST, "/fondo/ingresar").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/fondo/retirar").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/fondo/premiar").hasRole("ADMIN")
-                // Ver saldo y movimientos: todos los autenticados
+                .requestMatchers(HttpMethod.POST, "/fondo/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/fondo/**").authenticated()
                 
                 // Resto requiere autenticación
