@@ -26,7 +26,7 @@
         <module>inventory-service</module>
         <module>sales-service</module>
         <module>billing-service</module>
-        <!--<module>finance-service</module>-->
+        <module>finance-service</module>
         <!--<module>equipment-service</module>-->
         <!--<module>document-service</module>-->
         <!--<module>notification-service</module>-->
