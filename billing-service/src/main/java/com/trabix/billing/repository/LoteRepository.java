@@ -16,11 +16,9 @@ public interface LoteRepository extends JpaRepository<Lote, Long> {
     
     Optional<Lote> findFirstByUsuarioIdAndEstadoOrderByFechaCreacionDesc(Long usuarioId, String estado);
     
-    /** Lote con sus tandas (evita N+1) */
     @Query("SELECT l FROM Lote l LEFT JOIN FETCH l.tandas WHERE l.id = :id")
     Optional<Lote> findByIdWithTandas(@Param("id") Long id);
     
-    /** Lotes activos con tandas pendientes de cuadre */
     @Query("""
         SELECT DISTINCT l FROM Lote l 
         JOIN l.tandas t 

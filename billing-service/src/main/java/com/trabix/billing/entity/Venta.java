@@ -49,23 +49,14 @@ public class Venta {
     @Column(nullable = false, length = 20)
     private String estado;
 
-    /**
-     * Verifica si es un regalo (no genera ingreso).
-     */
     public boolean esRegalo() {
         return "REGALO".equals(tipo);
     }
 
-    /**
-     * Verifica si está aprobada.
-     */
     public boolean estaAprobada() {
         return "APROBADA".equals(estado);
     }
 
-    /**
-     * Verifica si genera ingreso (aprobada y no es regalo).
-     */
     public boolean generaIngreso() {
         return estaAprobada() && !esRegalo();
     }

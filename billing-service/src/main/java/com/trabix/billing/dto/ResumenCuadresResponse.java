@@ -19,18 +19,15 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ResumenCuadresResponse {
 
-    // Conteos por estado
     private Integer cuadresPendientes;
     private Integer cuadresEnProceso;
     private Integer cuadresExitosos;
     private Integer cuadresTotales;
     
-    // Montos
     private BigDecimal totalEsperado;
     private BigDecimal totalRecibido;
     private BigDecimal totalExcedente;
     
-    // Cuadres pendientes con detalle
     private List<CuadrePendienteInfo> pendientes;
     
     @Data
@@ -45,6 +42,6 @@ public class ResumenCuadresResponse {
         private String tipoCuadre;
         private BigDecimal montoEsperado;
         private Double porcentajeStock;
-        private String tiempoEspera; // "Hace 2 horas", etc.
+        private String tiempoEspera;
     }
 }

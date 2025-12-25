@@ -16,23 +16,17 @@ import java.util.Optional;
 @Repository
 public interface CuadreRepository extends JpaRepository<Cuadre, Long> {
 
-    // === Consultas por tanda ===
-    
     List<Cuadre> findByTandaIdOrderByCreatedAtDesc(Long tandaId);
     
     Optional<Cuadre> findByTandaIdAndTipo(Long tandaId, TipoCuadre tipo);
     
     Optional<Cuadre> findFirstByTandaIdOrderByCreatedAtDesc(Long tandaId);
     
-    // === Consultas por estado ===
-    
     Page<Cuadre> findByEstado(String estado, Pageable pageable);
     
     List<Cuadre> findByEstadoOrderByCreatedAtAsc(String estado);
     
     long countByEstado(String estado);
-    
-    // === Consultas por lote (a través de tanda) ===
     
     @Query("""
         SELECT c FROM Cuadre c 
@@ -41,8 +35,6 @@ public interface CuadreRepository extends JpaRepository<Cuadre, Long> {
         ORDER BY c.createdAt DESC
         """)
     List<Cuadre> findByLoteId(@Param("loteId") Long loteId);
-    
-    // === Consultas por usuario (a través de lote) ===
     
     @Query("""
         SELECT c FROM Cuadre c 
@@ -64,17 +56,10 @@ public interface CuadreRepository extends JpaRepository<Cuadre, Long> {
             @Param("usuarioId") Long usuarioId, 
             @Param("estado") String estado);
     
-    // === Verificaciones ===
-    
-    /** Verifica si existe un cuadre pendiente para una tanda */
     boolean existsByTandaIdAndEstado(Long tandaId, String estado);
     
-    /** Verifica si ya existe un cuadre de cierto tipo para una tanda */
     boolean existsByTandaIdAndTipo(Long tandaId, TipoCuadre tipo);
     
-    // === Estadísticas ===
-    
-    /** Suma el excedente de todos los cuadres exitosos de un lote */
     @Query("""
         SELECT COALESCE(SUM(c.excedente), 0) FROM Cuadre c 
         JOIN c.tanda t 
@@ -83,7 +68,6 @@ public interface CuadreRepository extends JpaRepository<Cuadre, Long> {
         """)
     BigDecimal sumarExcedentePorLote(@Param("loteId") Long loteId);
     
-    /** Obtiene el último excedente de un lote */
     @Query("""
         SELECT c.excedente FROM Cuadre c 
         JOIN c.tanda t 
@@ -94,7 +78,6 @@ public interface CuadreRepository extends JpaRepository<Cuadre, Long> {
         """)
     Optional<BigDecimal> obtenerUltimoExcedente(@Param("loteId") Long loteId);
     
-    /** Cuenta cuadres exitosos de un lote */
     @Query("""
         SELECT COUNT(c) FROM Cuadre c 
         JOIN c.tanda t 

@@ -10,7 +10,6 @@ import java.util.Optional;
 @Repository
 public interface ConfiguracionCostosRepository extends JpaRepository<ConfiguracionCostos, Long> {
 
-    /** Obtiene la configuración actual (solo hay una) */
     @Query("SELECT c FROM ConfiguracionCostos c ORDER BY c.id DESC LIMIT 1")
     Optional<ConfiguracionCostos> findCurrent();
 }

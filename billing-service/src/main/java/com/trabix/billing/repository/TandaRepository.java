@@ -16,7 +16,6 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
     
     Optional<Tanda> findByLoteIdAndNumero(Long loteId, Integer numero);
     
-    /** Tandas que requieren cuadre (liberadas con stock <= porcentaje) */
     @Query("""
         SELECT t FROM Tanda t 
         WHERE t.estado = 'LIBERADA' 
@@ -25,7 +24,6 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
         """)
     List<Tanda> findTandasParaCuadre(@Param("porcentaje") int porcentaje);
     
-    /** Tandas liberadas de un usuario */
     @Query("""
         SELECT t FROM Tanda t 
         JOIN t.lote l 
@@ -36,7 +34,6 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
         """)
     List<Tanda> findTandasActivasDeUsuario(@Param("usuarioId") Long usuarioId);
     
-    /** Verifica si la tanda anterior está cuadrada */
     @Query("""
         SELECT CASE WHEN t.estado = 'CUADRADA' THEN true ELSE false END 
         FROM Tanda t 

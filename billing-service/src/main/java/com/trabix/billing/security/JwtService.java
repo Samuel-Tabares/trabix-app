@@ -12,7 +12,6 @@ import java.util.Date;
 
 /**
  * Servicio para validar tokens JWT.
- * Solo valida, no genera (eso lo hace auth-service).
  */
 @Slf4j
 @Service

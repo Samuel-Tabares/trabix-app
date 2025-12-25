@@ -12,10 +12,8 @@ import java.util.List;
 @Repository
 public interface VentaRepository extends JpaRepository<Venta, Long> {
 
-    /** Ventas aprobadas de una tanda (para calcular recaudado) */
     List<Venta> findByTandaIdAndEstado(Long tandaId, String estado);
     
-    /** Suma el total recaudado de una tanda (ventas aprobadas, excluyendo regalos) */
     @Query("""
         SELECT COALESCE(SUM(v.precioTotal), 0) FROM Venta v 
         WHERE v.tanda.id = :tandaId 
@@ -24,7 +22,6 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
         """)
     BigDecimal sumarRecaudadoPorTanda(@Param("tandaId") Long tandaId);
     
-    /** Suma el total recaudado de un lote (todas las tandas) */
     @Query("""
         SELECT COALESCE(SUM(v.precioTotal), 0) FROM Venta v 
         JOIN v.tanda t 
@@ -34,7 +31,6 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
         """)
     BigDecimal sumarRecaudadoPorLote(@Param("loteId") Long loteId);
     
-    /** Suma recaudado de un usuario en un lote específico */
     @Query("""
         SELECT COALESCE(SUM(v.precioTotal), 0) FROM Venta v 
         JOIN v.tanda t 
@@ -47,7 +43,6 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             @Param("usuarioId") Long usuarioId, 
             @Param("loteId") Long loteId);
     
-    /** Cuenta unidades vendidas aprobadas de una tanda */
     @Query("""
         SELECT COALESCE(SUM(v.cantidad), 0) FROM Venta v 
         WHERE v.tanda.id = :tandaId 

@@ -13,7 +13,6 @@ import java.util.List;
 
 /**
  * Detalle del cálculo de un cuadre.
- * Muestra paso a paso cómo se calculó cada monto.
  */
 @Data
 @Builder
@@ -23,36 +22,27 @@ import java.util.List;
 public class CalculoCuadreResponse {
 
     private TipoCuadre tipo;
-    private String modelo; // MODELO_60_40 o MODELO_50_50
+    private String modelo;
     
-    // === Datos de entrada ===
     private BigDecimal totalRecaudado;
     private BigDecimal excedenteAnterior;
-    private BigDecimal disponibleTotal; // recaudado + excedente anterior
+    private BigDecimal disponibleTotal;
     
-    // === Para cuadre de INVERSIÓN (Tanda 1) ===
     private BigDecimal inversionSamuel;
     private BigDecimal inversionVendedor;
     
-    // === Para cuadre de GANANCIAS (Tanda 2 y 3) ===
     private BigDecimal gananciasBrutas;
     
-    // === Distribución según modelo ===
+    private BigDecimal porcentajeVendedor;
+    private BigDecimal porcentajeSamuel;
     
-    // Modelo 60/40 (N2)
-    private BigDecimal porcentajeVendedor; // 60%
-    private BigDecimal porcentajeSamuel;   // 40%
-    
-    // Modelo 50/50 Cascada (N3+)
     @Builder.Default
     private List<DistribucionNivel> distribucionCascada = new ArrayList<>();
     
-    // === Resultado final ===
     private BigDecimal montoQueDebeTransferir;
     private BigDecimal excedenteResultante;
     private BigDecimal montoParaVendedor;
     
-    // === Pasos del cálculo (para transparencia) ===
     @Builder.Default
     private List<String> pasosCalculo = new ArrayList<>();
     

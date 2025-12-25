@@ -62,8 +62,6 @@ public class Cuadre {
     @Column(name = "texto_whatsapp", columnDefinition = "TEXT")
     private String textoWhatsapp;
 
-    // === Campos adicionales para el detalle del cuadre ===
-
     /** Total recaudado en ventas de la tanda */
     @Column(name = "total_recaudado", precision = 12, scale = 2)
     private BigDecimal totalRecaudado;
@@ -91,18 +89,10 @@ public class Cuadre {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        if (estado == null) {
-            estado = "PENDIENTE";
-        }
-        if (montoRecibido == null) {
-            montoRecibido = BigDecimal.ZERO;
-        }
-        if (excedente == null) {
-            excedente = BigDecimal.ZERO;
-        }
-        if (excedenteAnterior == null) {
-            excedenteAnterior = BigDecimal.ZERO;
-        }
+        if (estado == null) estado = "PENDIENTE";
+        if (montoRecibido == null) montoRecibido = BigDecimal.ZERO;
+        if (excedente == null) excedente = BigDecimal.ZERO;
+        if (excedenteAnterior == null) excedenteAnterior = BigDecimal.ZERO;
     }
 
     @PreUpdate
@@ -110,57 +100,35 @@ public class Cuadre {
         updatedAt = LocalDateTime.now();
     }
 
-    /**
-     * Marca el cuadre como en proceso (transferencia reportada).
-     */
     public void marcarEnProceso(BigDecimal montoTransferido) {
         this.estado = "EN_PROCESO";
         this.montoRecibido = montoTransferido;
     }
 
-    /**
-     * Confirma el cuadre como exitoso.
-     */
     public void confirmar() {
         this.estado = "EXITOSO";
         this.fecha = LocalDateTime.now();
-        // Calcular excedente si pagó de más
         if (montoRecibido.compareTo(montoEsperado) > 0) {
             this.excedente = montoRecibido.subtract(montoEsperado);
         }
     }
 
-    /**
-     * Cancela el cuadre.
-     */
     public void cancelar() {
         this.estado = "CANCELADO";
     }
 
-    /**
-     * Verifica si el cuadre está pendiente.
-     */
     public boolean estaPendiente() {
         return "PENDIENTE".equals(estado);
     }
 
-    /**
-     * Verifica si el cuadre fue exitoso.
-     */
     public boolean esExitoso() {
         return "EXITOSO".equals(estado);
     }
 
-    /**
-     * Verifica si es cuadre de inversión (tanda 1).
-     */
     public boolean esCuadreInversion() {
         return tipo == TipoCuadre.INVERSION;
     }
 
-    /**
-     * Verifica si es cuadre de ganancias (tanda 2 o 3).
-     */
     public boolean esCuadreGanancias() {
         return tipo == TipoCuadre.GANANCIA;
     }

@@ -16,7 +16,6 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     
     Optional<Usuario> findByCedulaAndEstado(String cedula, String estado);
     
-    /** Obtiene la cadena de reclutadores hacia arriba (para distribución cascada) */
     @Query(value = """
         WITH RECURSIVE cadena AS (
             SELECT id, nombre, cedula, nivel, reclutador_id, 1 as profundidad
@@ -31,7 +30,6 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
         """, nativeQuery = true)
     List<Object[]> obtenerCadenaReclutadores(@Param("usuarioId") Long usuarioId);
     
-    /** Obtiene el admin (N1) */
     @Query("SELECT u FROM Usuario u WHERE u.nivel = 'N1' OR u.rol = 'ADMIN'")
     Optional<Usuario> findAdmin();
 }

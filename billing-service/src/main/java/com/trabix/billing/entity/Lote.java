@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Entidad Lote simplificada para billing-service.
+ * Entidad Lote para billing-service.
  */
 @Entity
 @Table(name = "lotes")
@@ -56,7 +56,6 @@ public class Lote {
 
     /**
      * Calcula la inversión de Samuel (50% de la inversión percibida).
-     * Tanto en modelo 60/40 como 50/50, la inversión inicial se divide 50/50.
      */
     public BigDecimal getInversionSamuel() {
         return getInversionPercibidaTotal().divide(BigDecimal.valueOf(2));

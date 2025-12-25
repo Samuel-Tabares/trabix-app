@@ -36,12 +36,10 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
-                // Endpoints públicos (documentación)
+                // Endpoints públicos
                 .requestMatchers(
-                    "/api-docs/**",
-                    "/swagger-ui/**",
-                    "/swagger-ui.html",
-                    "/actuator/health"
+                    "/actuator/health",
+                    "/error"
                 ).permitAll()
                 // Generar cuadre solo admin
                 .requestMatchers(HttpMethod.POST, "/cuadres/generar").hasRole("ADMIN")

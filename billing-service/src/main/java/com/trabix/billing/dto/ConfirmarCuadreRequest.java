@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 
 /**
- * Request para confirmar un cuadre (cuando el vendedor transfiere).
+ * Request para confirmar un cuadre.
  */
 @Data
 @Builder
@@ -22,8 +22,5 @@ public class ConfirmarCuadreRequest {
     @Positive(message = "El monto debe ser positivo")
     private BigDecimal montoRecibido;
 
-    /**
-     * Nota opcional sobre la transferencia.
-     */
     private String nota;
 }

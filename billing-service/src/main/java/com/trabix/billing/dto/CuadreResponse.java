@@ -29,22 +29,18 @@ public class CuadreResponse {
     private TipoCuadre tipo;
     private String estado;
     
-    // Montos principales
     private BigDecimal totalRecaudado;
     private BigDecimal montoEsperado;
     private BigDecimal montoRecibido;
     private BigDecimal excedente;
     private BigDecimal excedenteAnterior;
     
-    // Distribución
     private BigDecimal montoVendedor;
     private BigDecimal montoCascada;
     private List<DistribucionCascada> distribucionCascada;
     
-    // Texto generado
     private String textoWhatsapp;
     
-    // Fechas
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaConfirmacion;
     
