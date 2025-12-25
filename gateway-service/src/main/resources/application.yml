@@ -30,117 +30,117 @@ spring:
       
       # Rutas a los microservicios
       routes:
-        # Auth Service
+        # Auth Service - /api/auth/** -> /auth/**
         - id: auth-service
           uri: ${AUTH_SERVICE_URL:http://localhost:8080}
           predicates:
             - Path=/api/auth/**
           filters:
-            - RewritePath=/api/auth/(?<segment>.*), /auth/${segment}
-        
-        # User Service
+            - StripPrefix=1
+
+        # User Service - /api/users/** -> /usuarios/**
         - id: user-service
           uri: ${USER_SERVICE_URL:http://localhost:8081}
           predicates:
-            - Path=/api/users/**
+            - Path=/api/usuarios/**
           filters:
-            - RewritePath=/api/users/(?<segment>.*), /usuarios/${segment}
-        
+            - StripPrefix=1
+
         # Inventory Service - Lotes
         - id: inventory-lotes
           uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
           predicates:
-            - Path=/api/inventory/lotes/**
+            - Path=/api/lotes/**
           filters:
-            - RewritePath=/api/inventory/lotes/(?<segment>.*), /lotes/${segment}
-        
+            - StripPrefix=1
+
         # Inventory Service - Tandas
         - id: inventory-tandas
           uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
           predicates:
-            - Path=/api/inventory/tandas/**
+            - Path=/api/tandas/**
           filters:
-            - RewritePath=/api/inventory/tandas/(?<segment>.*), /tandas/${segment}
-        
+            - StripPrefix=1
+
         # Sales Service
         - id: sales-service
           uri: ${SALES_SERVICE_URL:http://localhost:8083}
           predicates:
-            - Path=/api/sales/**
+            - Path=/api/ventas/**
           filters:
-            - RewritePath=/api/sales/(?<segment>.*), /ventas/${segment}
-        
+            - StripPrefix=1
+
         # Billing Service
         - id: billing-service
           uri: ${BILLING_SERVICE_URL:http://localhost:8084}
           predicates:
-            - Path=/api/billing/**
+            - Path=/api/cuadres/**
           filters:
-            - RewritePath=/api/billing/(?<segment>.*), /cuadres/${segment}
-        
+            - StripPrefix=1
+
         # Finance Service - Configuración
         - id: finance-config
           uri: ${FINANCE_SERVICE_URL:http://localhost:8085}
           predicates:
-            - Path=/api/finance/config/**
+            - Path=/api/configuracion/**
           filters:
-            - RewritePath=/api/finance/config/(?<segment>.*), /configuracion/${segment}
-        
+            - StripPrefix=1
+
         # Finance Service - Fondo
         - id: finance-fondo
           uri: ${FINANCE_SERVICE_URL:http://localhost:8085}
           predicates:
-            - Path=/api/finance/fondo/**
+            - Path=/api/fondo/**
           filters:
-            - RewritePath=/api/finance/fondo/(?<segment>.*), /fondo/${segment}
-        
+            - StripPrefix=1
+
         # Finance Service - Costos Producción
         - id: finance-costos
           uri: ${FINANCE_SERVICE_URL:http://localhost:8085}
           predicates:
-            - Path=/api/finance/costos/**
+            - Path=/api/costos-produccion/**
           filters:
-            - RewritePath=/api/finance/costos/(?<segment>.*), /costos-produccion/${segment}
-        
+            - StripPrefix=1
+
         # Equipment Service - Equipos
         - id: equipment-equipos
           uri: ${EQUIPMENT_SERVICE_URL:http://localhost:8086}
           predicates:
-            - Path=/api/equipment/equipos/**
+            - Path=/api/equipos/**
           filters:
-            - RewritePath=/api/equipment/equipos/(?<segment>.*), /equipos/${segment}
-        
+            - StripPrefix=1
+
         # Equipment Service - Mensualidades
         - id: equipment-mensualidades
           uri: ${EQUIPMENT_SERVICE_URL:http://localhost:8086}
           predicates:
-            - Path=/api/equipment/mensualidades/**
+            - Path=/api/mensualidades/**
           filters:
-            - RewritePath=/api/equipment/mensualidades/(?<segment>.*), /mensualidades/${segment}
-        
+            - StripPrefix=1
+
         # Document Service
         - id: document-service
           uri: ${DOCUMENT_SERVICE_URL:http://localhost:8087}
           predicates:
-            - Path=/api/documents/**
+            - Path=/api/documentos/**
           filters:
-            - RewritePath=/api/documents/(?<segment>.*), /documentos/${segment}
-        
+            - StripPrefix=1
+
         # Notification Service
         - id: notification-service
           uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8088}
           predicates:
-            - Path=/api/notifications/**
+            - Path=/api/notificaciones/**
           filters:
-            - RewritePath=/api/notifications/(?<segment>.*), /notificaciones/${segment}
-        
+            - StripPrefix=1
+
         # Backup Service
         - id: backup-service
           uri: ${BACKUP_SERVICE_URL:http://localhost:8089}
           predicates:
             - Path=/api/backups/**
           filters:
-            - RewritePath=/api/backups/(?<segment>.*), /backups/${segment}
+            - StripPrefix=1
 
 # Actuator
 management:
