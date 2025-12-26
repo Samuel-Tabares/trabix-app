@@ -4,7 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * Entidad Tanda simplificada para relaciones en sales-service.
+ * Entidad Tanda simplificada para sales-service.
+ * Usa loteId como campo simple para evitar problemas con queries nativas.
  */
 @Entity
 @Table(name = "tandas")
@@ -23,6 +24,9 @@ public class Tanda {
     @Column(nullable = false)
     private Integer numero;
 
+    @Column(name = "cantidad_asignada")
+    private Integer cantidadAsignada;
+
     @Column(name = "stock_entregado", nullable = false)
     private Integer stockEntregado;
 
@@ -37,7 +41,7 @@ public class Tanda {
      */
     public void reducirStock(int cantidad) {
         if (cantidad > stockActual) {
-            throw new IllegalArgumentException("Stock insuficiente");
+            throw new IllegalArgumentException("Stock insuficiente. Disponible: " + stockActual);
         }
         this.stockActual -= cantidad;
     }
@@ -48,4 +52,13 @@ public class Tanda {
     public void restaurarStock(int cantidad) {
         this.stockActual += cantidad;
     }
+
+    /**
+     * Calcula el porcentaje de stock restante.
+     */
+    public double getPorcentajeStockRestante() {
+        if (stockEntregado == 0) return 100.0;
+        return (stockActual * 100.0) / stockEntregado;
+    }
 }
+

@@ -5,9 +5,11 @@ import com.trabix.common.enums.TipoVenta;
 import com.trabix.common.exception.RecursoNoEncontradoException;
 import com.trabix.common.exception.ValidacionNegocioException;
 import com.trabix.sales.dto.*;
+import com.trabix.sales.entity.Lote;
 import com.trabix.sales.entity.Tanda;
 import com.trabix.sales.entity.Usuario;
 import com.trabix.sales.entity.Venta;
+import com.trabix.sales.repository.LoteRepository;
 import com.trabix.sales.repository.TandaRepository;
 import com.trabix.sales.repository.UsuarioRepository;
 import com.trabix.sales.repository.VentaRepository;
@@ -29,6 +31,13 @@ import java.util.stream.Collectors;
 
 /**
  * Servicio para gestión de ventas.
+ * 
+ * LÓGICA DE NEGOCIO:
+ * - Ventas usan FIFO (lote más antiguo primero)
+ * - Stock se reduce al registrar (preventivo)
+ * - Stock se restaura si se rechaza
+ * - Ganancias se calculan según modelo del lote (60/40 o 50/50)
+ * - Al aprobar se verifica si hay trigger de cuadre
  */
 @Slf4j
 @Service
@@ -37,6 +46,7 @@ public class VentaService {
 
     private final VentaRepository ventaRepository;
     private final TandaRepository tandaRepository;
+    private final LoteRepository loteRepository;
     private final UsuarioRepository usuarioRepository;
 
     @Value("${trabix.precios.unidad:8000}")
@@ -54,8 +64,14 @@ public class VentaService {
     @Value("${trabix.limite-regalos-porcentaje:8}")
     private int limiteRegalosPorcentaje;
 
+    // Umbrales de cuadre
+    private static final int TANDA1_ALERTA_PORCENTAJE = 20;
+    private static final int TANDA2_CUADRE_PORCENTAJE = 10;
+    private static final int TANDA3_CUADRE_PORCENTAJE = 20;
+
     /**
      * Registra una nueva venta.
+     * Usa FIFO: busca la tanda del lote más antiguo primero.
      */
     @Transactional
     public VentaResponse registrarVenta(Long usuarioId, RegistrarVentaRequest request) {
@@ -63,7 +79,7 @@ public class VentaService {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario", usuarioId));
 
-        // Obtener tanda (especificada o activa)
+        // Obtener tanda (especificada o activa con FIFO)
         Tanda tanda;
         if (request.getTandaId() != null) {
             tanda = tandaRepository.findById(request.getTandaId())
@@ -71,6 +87,15 @@ public class VentaService {
         } else {
             tanda = tandaRepository.findTandaActivaDeUsuario(usuarioId)
                     .orElseThrow(() -> new ValidacionNegocioException("No tienes stock disponible"));
+        }
+
+        // Obtener lote
+        Lote lote = loteRepository.findById(tanda.getLoteId())
+                .orElseThrow(() -> new RecursoNoEncontradoException("Lote", tanda.getLoteId()));
+
+        // Validar que el lote esté activo
+        if (!"ACTIVO".equals(lote.getEstado())) {
+            throw new ValidacionNegocioException("El lote no está activo");
         }
 
         // Validar stock
@@ -118,17 +143,48 @@ public class VentaService {
                 .nota(request.getNota())
                 .build();
 
+        // Calcular ganancias según modelo del lote
+        calcularGanancias(venta, lote);
+
         // Reducir stock preventivamente
         tanda.reducirStock(request.getCantidad());
         tandaRepository.save(tanda);
 
         venta = ventaRepository.save(venta);
 
-        log.info("Venta registrada: ID={}, Usuario={}, Tipo={}, Cantidad={}, Total={}",
-                venta.getId(), usuario.getCedula(), request.getTipo(),
-                request.getCantidad(), precioTotal);
+        log.info("📝 Venta registrada: ID={}, Usuario={}, Lote={}, Tanda={}, Tipo={}, Cantidad={}, Total={}, Ganancia={}, ParaSamuel={}",
+                venta.getId(), usuario.getCedula(), lote.getId(), tanda.getNumero(),
+                request.getTipo(), request.getCantidad(), precioTotal,
+                venta.getGananciaVendedor(), venta.getParteSamuel());
 
-        return mapToResponse(venta);
+        return mapToResponse(venta, tanda, lote, usuario);
+    }
+
+    /**
+     * Calcula ganancias de la venta según modelo del lote.
+     */
+    private void calcularGanancias(Venta venta, Lote lote) {
+        if (venta.getTipo() == TipoVenta.REGALO) {
+            venta.setGananciaVendedor(BigDecimal.ZERO);
+            venta.setParteSamuel(BigDecimal.ZERO);
+            venta.setModeloNegocio(lote.getModelo());
+            return;
+        }
+
+        venta.setModeloNegocio(lote.getModelo());
+        int porcentajeVendedor = lote.getPorcentajeGananciaVendedor();
+        int porcentajeSamuel = lote.getPorcentajeSamuel();
+
+        BigDecimal gananciaVendedor = venta.getPrecioTotal()
+                .multiply(BigDecimal.valueOf(porcentajeVendedor))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        BigDecimal parteSamuel = venta.getPrecioTotal()
+                .multiply(BigDecimal.valueOf(porcentajeSamuel))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        venta.setGananciaVendedor(gananciaVendedor);
+        venta.setParteSamuel(parteSamuel);
     }
 
     /**
@@ -146,8 +202,48 @@ public class VentaService {
         venta.aprobar();
         ventaRepository.save(venta);
 
-        log.info("Venta aprobada: ID={}", ventaId);
-        return mapToResponse(venta);
+        // Verificar triggers de cuadre
+        Tanda tanda = venta.getTanda();
+        verificarTriggersCuadre(tanda);
+
+        log.info("✅ Venta aprobada: ID={}", ventaId);
+        
+        Lote lote = loteRepository.findById(tanda.getLoteId()).orElse(null);
+        return mapToResponse(venta, tanda, lote, venta.getUsuario());
+    }
+
+    /**
+     * Verifica si hay triggers de cuadre después de una venta aprobada.
+     */
+    private void verificarTriggersCuadre(Tanda tanda) {
+        double porcentajeRestante = tanda.getPorcentajeStockRestante();
+        int numeroTanda = tanda.getNumero();
+        
+        // Obtener total de tandas del lote
+        int totalTandas = tandaRepository.countByLoteId(tanda.getLoteId());
+        boolean esUltimaTanda = numeroTanda == totalTandas;
+
+        if (numeroTanda == 1) {
+            if (porcentajeRestante <= TANDA1_ALERTA_PORCENTAJE && porcentajeRestante > 0) {
+                log.info("📢 ALERTA Tanda 1: Lote {} tiene {}% de stock. Cuadre pendiente cuando se recupere inversión Samuel.",
+                        tanda.getLoteId(), Math.round(porcentajeRestante));
+            }
+        } else if (!esUltimaTanda) {
+            if (porcentajeRestante <= TANDA2_CUADRE_PORCENTAJE) {
+                log.info("🔔 TRIGGER CUADRE Tanda {}: Lote {} tiene {}% de stock. ¡Cuadre requerido!",
+                        numeroTanda, tanda.getLoteId(), Math.round(porcentajeRestante));
+            }
+        } else {
+            if (porcentajeRestante <= TANDA3_CUADRE_PORCENTAJE && porcentajeRestante > 0) {
+                log.info("🔔 TRIGGER CUADRE Tanda {} (final): Lote {} tiene {}% de stock. ¡Cuadre requerido!",
+                        numeroTanda, tanda.getLoteId(), Math.round(porcentajeRestante));
+            }
+
+            if (tanda.getStockActual() == 0) {
+                log.info("🏁 MINI-CUADRE FINAL: Lote {} - Tanda {} agotada completamente.",
+                        tanda.getLoteId(), numeroTanda);
+            }
+        }
     }
 
     /**
@@ -170,8 +266,10 @@ public class VentaService {
         venta.rechazar(motivo);
         ventaRepository.save(venta);
 
-        log.info("Venta rechazada: ID={}, Motivo={}", ventaId, motivo);
-        return mapToResponse(venta);
+        log.info("❌ Venta rechazada: ID={}, Motivo={}. Stock restaurado.", ventaId, motivo);
+        
+        Lote lote = loteRepository.findById(tanda.getLoteId()).orElse(null);
+        return mapToResponse(venta, tanda, lote, venta.getUsuario());
     }
 
     /**
@@ -181,7 +279,10 @@ public class VentaService {
     public VentaResponse obtenerVenta(Long ventaId) {
         Venta venta = ventaRepository.findById(ventaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Venta", ventaId));
-        return mapToResponse(venta);
+        
+        Tanda tanda = venta.getTanda();
+        Lote lote = loteRepository.findById(tanda.getLoteId()).orElse(null);
+        return mapToResponse(venta, tanda, lote, venta.getUsuario());
     }
 
     /**
@@ -189,7 +290,7 @@ public class VentaService {
      */
     @Transactional(readOnly = true)
     public Page<VentaResponse> listarVentas(Pageable pageable) {
-        return ventaRepository.findAll(pageable).map(this::mapToResponse);
+        return ventaRepository.findAll(pageable).map(this::mapToResponseSimple);
     }
 
     /**
@@ -198,7 +299,7 @@ public class VentaService {
     @Transactional(readOnly = true)
     public Page<VentaResponse> listarVentasPendientes(Pageable pageable) {
         return ventaRepository.findByEstado(EstadoVenta.PENDIENTE, pageable)
-                .map(this::mapToResponse);
+                .map(this::mapToResponseSimple);
     }
 
     /**
@@ -208,7 +309,7 @@ public class VentaService {
     public List<VentaResponse> listarVentasDeUsuario(Long usuarioId) {
         return ventaRepository.findByUsuarioIdOrderByFechaRegistroDesc(usuarioId)
                 .stream()
-                .map(this::mapToResponse)
+                .map(this::mapToResponseSimple)
                 .collect(Collectors.toList());
     }
 
@@ -219,7 +320,7 @@ public class VentaService {
     public List<VentaResponse> listarVentasDeTanda(Long tandaId) {
         return ventaRepository.findByTandaIdOrderByFechaRegistroDesc(tandaId)
                 .stream()
-                .map(this::mapToResponse)
+                .map(this::mapToResponseSimple)
                 .collect(Collectors.toList());
     }
 
@@ -233,7 +334,7 @@ public class VentaService {
 
         return ventaRepository.findByUsuarioIdAndFechaRegistroBetween(usuarioId, inicioHoy, finHoy)
                 .stream()
-                .map(this::mapToResponse)
+                .map(this::mapToResponseSimple)
                 .collect(Collectors.toList());
     }
 
@@ -242,13 +343,19 @@ public class VentaService {
      */
     @Transactional(readOnly = true)
     public ResumenVentasResponse obtenerResumenUsuario(Long usuarioId) {
-        // Obtener estadísticas generales
         Object[] stats = ventaRepository.obtenerEstadisticasUsuario(usuarioId);
         long totalVentas = ((Number) stats[0]).longValue();
         int totalUnidades = ((Number) stats[1]).intValue();
-        BigDecimal totalRecaudado = (BigDecimal) stats[2];
+        BigDecimal totalRecaudado = stats[2] != null ? (BigDecimal) stats[2] : BigDecimal.ZERO;
 
-        // Obtener por tipo
+        // Ganancias
+        BigDecimal totalGananciaVendedor = ventaRepository.sumarGananciaVendedor(usuarioId);
+        BigDecimal totalParteSamuel = ventaRepository.sumarParteSamuel(usuarioId);
+        
+        if (totalGananciaVendedor == null) totalGananciaVendedor = BigDecimal.ZERO;
+        if (totalParteSamuel == null) totalParteSamuel = BigDecimal.ZERO;
+
+        // Por tipo
         List<Object[]> statsPorTipo = ventaRepository.obtenerEstadisticasPorTipo(usuarioId);
 
         int ventasUnidad = 0, unidadesUnidad = 0;
@@ -265,7 +372,7 @@ public class VentaService {
             TipoVenta tipo = (TipoVenta) row[0];
             int count = ((Number) row[1]).intValue();
             int unidades = ((Number) row[2]).intValue();
-            BigDecimal monto = (BigDecimal) row[3];
+            BigDecimal monto = row[3] != null ? (BigDecimal) row[3] : BigDecimal.ZERO;
 
             switch (tipo) {
                 case UNIDAD -> {
@@ -295,12 +402,10 @@ public class VentaService {
             }
         }
 
-        // Conteos por estado
         long pendientes = ventaRepository.countByUsuarioIdAndEstado(usuarioId, EstadoVenta.PENDIENTE);
         long aprobadas = ventaRepository.countByUsuarioIdAndEstado(usuarioId, EstadoVenta.APROBADA);
         long rechazadas = ventaRepository.countByUsuarioIdAndEstado(usuarioId, EstadoVenta.RECHAZADA);
 
-        // Promedios
         BigDecimal promedioVenta = totalVentas > 0
                 ? totalRecaudado.divide(BigDecimal.valueOf(totalVentas), 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
@@ -314,6 +419,8 @@ public class VentaService {
                 .totalVentas((int) totalVentas)
                 .totalUnidadesVendidas(totalUnidades)
                 .totalRecaudado(totalRecaudado)
+                .totalGananciaVendedor(totalGananciaVendedor)
+                .totalParteSamuel(totalParteSamuel)
                 .ventasUnidad(ventasUnidad)
                 .unidadesUnidad(unidadesUnidad)
                 .recaudadoUnidad(recaudadoUnidad)
@@ -360,7 +467,7 @@ public class VentaService {
             case PROMO -> BigDecimal.valueOf(precioPromo);
             case SIN_LICOR -> BigDecimal.valueOf(precioSinLicor);
             case REGALO -> BigDecimal.ZERO;
-            case MAYOR -> BigDecimal.ZERO; // Se calcula diferente, ver calcularPrecioMayor
+            case MAYOR -> BigDecimal.ZERO;
         };
     }
 
@@ -376,27 +483,103 @@ public class VentaService {
         }
     }
 
-    private VentaResponse mapToResponse(Venta venta) {
+    /**
+     * Mapeo completo con lote cargado.
+     */
+    private VentaResponse mapToResponse(Venta venta, Tanda tanda, Lote lote, Usuario usuario) {
+        // Stock disponible en el lote
+        List<Tanda> tandasLote = tandaRepository.findByLoteIdOrderByNumeroAsc(tanda.getLoteId());
+        int stockDisponibleLote = tandasLote.stream()
+                .filter(t -> "LIBERADA".equals(t.getEstado()))
+                .mapToInt(Tanda::getStockActual)
+                .sum();
+
+        // Determinar si está próximo a cuadre
+        double porcentaje = tanda.getPorcentajeStockRestante();
+        int totalTandas = tandasLote.size();
+        boolean esUltimaTanda = tanda.getNumero() == totalTandas;
+        boolean proximoACuadre = false;
+
+        if (tanda.getNumero() == 1) {
+            proximoACuadre = porcentaje <= TANDA1_ALERTA_PORCENTAJE;
+        } else if (!esUltimaTanda) {
+            proximoACuadre = porcentaje <= TANDA2_CUADRE_PORCENTAJE + 5;
+        } else {
+            proximoACuadre = porcentaje <= TANDA3_CUADRE_PORCENTAJE + 5;
+        }
+
+        String descripcionTanda = getDescripcionTanda(tanda.getNumero(), totalTandas);
+
+        VentaResponse.LoteInfo loteInfo = null;
+        if (lote != null) {
+            loteInfo = VentaResponse.LoteInfo.builder()
+                    .id(lote.getId())
+                    .cantidadTotal(lote.getCantidadTotal())
+                    .modelo(lote.getModelo())
+                    .estado(lote.getEstado())
+                    .fechaCreacion(lote.getFechaCreacion())
+                    .stockDisponible(stockDisponibleLote)
+                    .porcentajeGananciaVendedor(lote.getPorcentajeGananciaVendedor())
+                    .build();
+        }
+
         return VentaResponse.builder()
                 .id(venta.getId())
                 .vendedor(VentaResponse.VendedorInfo.builder()
-                        .id(venta.getUsuario().getId())
-                        .nombre(venta.getUsuario().getNombre())
-                        .cedula(venta.getUsuario().getCedula())
+                        .id(usuario.getId())
+                        .nombre(usuario.getNombre())
+                        .cedula(usuario.getCedula())
+                        .nivel(usuario.getNivel())
                         .build())
+                .lote(loteInfo)
                 .tanda(VentaResponse.TandaInfo.builder()
-                        .id(venta.getTanda().getId())
-                        .loteId(venta.getTanda().getLoteId())
-                        .numero(venta.getTanda().getNumero())
+                        .id(tanda.getId())
+                        .numero(tanda.getNumero())
+                        .descripcion(descripcionTanda)
+                        .stockActual(tanda.getStockActual())
+                        .stockEntregado(tanda.getStockEntregado())
+                        .porcentajeRestante(porcentaje)
+                        .estado(tanda.getEstado())
+                        .proximoACuadre(proximoACuadre)
                         .build())
                 .tipo(venta.getTipo())
                 .cantidad(venta.getCantidad())
                 .precioUnitario(venta.getPrecioUnitario())
                 .precioTotal(venta.getPrecioTotal())
+                .modeloNegocio(venta.getModeloNegocio())
+                .gananciaVendedor(venta.getGananciaVendedor())
+                .parteSamuel(venta.getParteSamuel())
                 .estado(venta.getEstado())
                 .fechaRegistro(venta.getFechaRegistro())
                 .fechaAprobacion(venta.getFechaAprobacion())
                 .nota(venta.getNota())
                 .build();
+    }
+
+    /**
+     * Mapeo simple para listados (carga entidades relacionadas).
+     */
+    private VentaResponse mapToResponseSimple(Venta venta) {
+        Tanda tanda = venta.getTanda();
+        Lote lote = loteRepository.findById(tanda.getLoteId()).orElse(null);
+        Usuario usuario = venta.getUsuario();
+        return mapToResponse(venta, tanda, lote, usuario);
+    }
+
+    private String getDescripcionTanda(int numero, int total) {
+        if (total == 2) {
+            return switch (numero) {
+                case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
+                case 2 -> "Tanda 2 (Recuperar inversión vendedor + Ganancias)";
+                default -> "Tanda " + numero;
+            };
+        } else {
+            return switch (numero) {
+                case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
+                case 2 -> "Tanda 2 (Recuperar inversión vendedor)";
+                case 3 -> "Tanda 3 (Ganancias puras)";
+                default -> "Tanda " + numero;
+            };
+        }
     }
 }

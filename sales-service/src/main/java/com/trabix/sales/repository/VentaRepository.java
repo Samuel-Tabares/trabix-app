@@ -118,4 +118,29 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
         GROUP BY v.tipo
         """)
     List<Object[]> obtenerEstadisticasPorTipo(@Param("usuarioId") Long usuarioId);
+
+    // Sumar ganancias del vendedor
+    @Query("""
+        SELECT COALESCE(SUM(v.gananciaVendedor), 0) FROM Venta v 
+        WHERE v.usuario.id = :usuarioId 
+        AND v.estado = 'APROBADA'
+        """)
+    BigDecimal sumarGananciaVendedor(@Param("usuarioId") Long usuarioId);
+
+    // Sumar parte de Samuel
+    @Query("""
+        SELECT COALESCE(SUM(v.parteSamuel), 0) FROM Venta v 
+        WHERE v.usuario.id = :usuarioId 
+        AND v.estado = 'APROBADA'
+        """)
+    BigDecimal sumarParteSamuel(@Param("usuarioId") Long usuarioId);
+
+    // Sumar ganancias por tanda
+    @Query("""
+        SELECT COALESCE(SUM(v.gananciaVendedor), 0), COALESCE(SUM(v.parteSamuel), 0)
+        FROM Venta v 
+        WHERE v.tanda.id = :tandaId 
+        AND v.estado = 'APROBADA'
+        """)
+    Object[] sumarGananciasPorTanda(@Param("tandaId") Long tandaId);
 }

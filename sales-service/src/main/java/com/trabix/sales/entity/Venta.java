@@ -58,6 +58,24 @@ public class Venta {
     @Column(name = "precio_total", nullable = false, precision = 10, scale = 2)
     private BigDecimal precioTotal;
 
+    /**
+     * Modelo de negocio aplicado (MODELO_60_40 o MODELO_50_50).
+     */
+    @Column(name = "modelo_negocio", length = 20)
+    private String modeloNegocio;
+
+    /**
+     * Ganancia del vendedor (60% o 50% según modelo).
+     */
+    @Column(name = "ganancia_vendedor", precision = 10, scale = 2)
+    private BigDecimal gananciaVendedor;
+
+    /**
+     * Parte que sube a Samuel (40% o 50% según modelo).
+     */
+    @Column(name = "parte_samuel", precision = 10, scale = 2)
+    private BigDecimal parteSamuel;
+
     @Column(name = "fecha_registro", nullable = false)
     private LocalDateTime fechaRegistro;
 

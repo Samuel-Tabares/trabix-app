@@ -23,6 +23,18 @@ public class ResumenVentasResponse {
     private Integer totalUnidadesVendidas;
     private BigDecimal totalRecaudado;
 
+    // === GANANCIAS ===
+    
+    /**
+     * Total de ganancias del vendedor (suma de gananciaVendedor de todas las ventas).
+     */
+    private BigDecimal totalGananciaVendedor;
+    
+    /**
+     * Total que sube a Samuel (suma de parteSamuel de todas las ventas).
+     */
+    private BigDecimal totalParteSamuel;
+
     // Por tipo de venta
     private Integer ventasUnidad;
     private Integer unidadesUnidad;
