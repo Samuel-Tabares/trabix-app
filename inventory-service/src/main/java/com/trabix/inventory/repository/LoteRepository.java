@@ -45,4 +45,7 @@ public interface LoteRepository extends JpaRepository<Lote, Long> {
 
     // Contar lotes activos de un usuario
     long countByUsuarioIdAndEstado(Long usuarioId, EstadoLote estado);
+
+    // Lotes por estado (sin paginación)
+    List<Lote> findByEstado(EstadoLote estado);
 }

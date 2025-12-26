@@ -139,16 +139,4 @@ public class Tanda {
     public void completarCuadre() {
         this.estado = EstadoTanda.CUADRADA;
     }
-
-    /**
-     * Descripción amigable del número de tanda.
-     */
-    public String getDescripcion() {
-        return switch (numero) {
-            case 1 -> "Tanda 1 (Inversión)";
-            case 2 -> "Tanda 2 (Recuperación + Ganancia)";
-            case 3 -> "Tanda 3 (Ganancia Pura)";
-            default -> "Tanda " + numero;
-        };
-    }
 }

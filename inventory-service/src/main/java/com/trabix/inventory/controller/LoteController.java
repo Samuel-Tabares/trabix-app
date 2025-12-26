@@ -76,11 +76,20 @@ public class LoteController {
     }
 
     @GetMapping("/usuario/{usuarioId}/activo")
-    @Operation(summary = "Lote activo", description = "Obtiene el lote activo de un usuario.")
+    @Operation(summary = "Lote activo", description = "Obtiene el lote activo más antiguo de un usuario (FIFO).")
     public ResponseEntity<ApiResponse<LoteResponse>> obtenerLoteActivo(
             @PathVariable Long usuarioId) {
         
         LoteResponse response = inventarioService.obtenerLoteActivoDeUsuario(usuarioId);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @GetMapping("/usuario/{usuarioId}/activos")
+    @Operation(summary = "Lotes activos", description = "Obtiene todos los lotes activos de un usuario.")
+    public ResponseEntity<ApiResponse<List<LoteResponse>>> obtenerLotesActivos(
+            @PathVariable Long usuarioId) {
+        
+        List<LoteResponse> response = inventarioService.obtenerLotesActivosDeUsuario(usuarioId);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
@@ -99,6 +108,15 @@ public class LoteController {
             @AuthenticationPrincipal Usuario usuario) {
         
         List<LoteResponse> response = inventarioService.listarLotesDeUsuario(usuario.getId());
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @GetMapping("/me/activos")
+    @Operation(summary = "Mis lotes activos", description = "Lista los lotes activos del usuario autenticado (FIFO).")
+    public ResponseEntity<ApiResponse<List<LoteResponse>>> misLotesActivos(
+            @AuthenticationPrincipal Usuario usuario) {
+        
+        List<LoteResponse> response = inventarioService.obtenerLotesActivosDeUsuario(usuario.getId());
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 

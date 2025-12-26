@@ -40,10 +40,12 @@ public class SecurityConfig {
                     "/swagger-ui.html",
                     "/actuator/health"
                 ).permitAll()
+                // === LOTES ===
                 // Crear lote solo admin
                 .requestMatchers(HttpMethod.POST, "/lotes").hasRole("ADMIN")
                 // Cancelar lote solo admin
                 .requestMatchers(HttpMethod.DELETE, "/lotes/**").hasRole("ADMIN")
+                // === TANDAS ===
                 // Liberar tanda solo admin
                 .requestMatchers(HttpMethod.POST, "/tandas/*/liberar").hasRole("ADMIN")
                 // Cuadre solo admin
@@ -51,6 +53,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/tandas/*/completar-cuadre").hasRole("ADMIN")
                 // Ver tandas para cuadre solo admin
                 .requestMatchers(HttpMethod.GET, "/tandas/pendientes-cuadre").hasRole("ADMIN")
+                // === STOCK PRODUCCIÓN (solo admin) ===
+                .requestMatchers("/stock-produccion/**").hasRole("ADMIN")
                 // Resto requiere autenticación
                 .anyRequest().authenticated()
             )

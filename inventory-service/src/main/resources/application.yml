@@ -26,14 +26,14 @@ jwt:
 
 # Configuración de negocio
 trabix:
-  # Distribución de tandas (debe sumar 100%)
-  tanda1-porcentaje: 40
-  tanda2-porcentaje: 30
-  tanda3-porcentaje: 30
-  # Porcentaje de stock para trigger de cuadre
-  trigger-cuadre-porcentaje: 20
+  # Umbral para 3 tandas (< umbral = 2 tandas, >= umbral = 3 tandas)
+  umbral-tres-tandas: 50
   # Costo percibido por unidad (lo que "paga" el vendedor)
   costo-percibido-unitario: 2400
+  # Costo real por unidad (costo de producción de Samuel)
+  costo-real-unitario: 1800
+  # Nivel de alerta de stock bajo para producción
+  alerta-stock-bajo: 300
 
 # OpenAPI
 springdoc:

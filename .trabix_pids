@@ -1,0 +1,10 @@
+auth-service:8080:34307
+user-service:8081:34308
+inventory-service:8082:34306
+billing-service:8084:34305
+finance-service:8085:34310
+equipment-service:8086:34309
+document-service:8087:34312
+notification-service:8088:34315
+backup-service:8089:34313
+gateway-service:8090:34314

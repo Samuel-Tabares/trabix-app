@@ -78,6 +78,18 @@ spring:
           filters:
             - StripPrefix=1
 
+        - id: inventory-stock-produccion
+          uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/stock-produccion/**
+          filters:
+            - StripPrefix=1
+          # GET  /api/stock-produccion → /stock-produccion (estado completo)
+          # POST /api/stock-produccion/produccion → /stock-produccion/produccion
+          # POST /api/stock-produccion/venta-directa → /stock-produccion/venta-directa
+          # POST /api/stock-produccion/ajuste → /stock-produccion/ajuste
+          # GET  /api/stock-produccion/movimientos → /stock-produccion/movimientos
+
         # ===========================================================
         # SALES SERVICE (Puerto 8083)
         # Controlador: @RequestMapping("/ventas")

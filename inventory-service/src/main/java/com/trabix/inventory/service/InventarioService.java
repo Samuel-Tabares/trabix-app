@@ -22,11 +22,23 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * Servicio para gestión de inventario: lotes, tandas y stock.
+ * 
+ * LÓGICA DE NEGOCIO:
+ * - < 50 TRABIX = 2 tandas (50% / 50%)
+ * - >= 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
+ * - Múltiples lotes activos permitidos
+ * - Ventas FIFO (lote más antiguo primero)
+ * 
+ * TRIGGERS DE CUADRE:
+ * - Tanda 1: 20% = solo alerta, cuadre cuando se recupera inversión Samuel
+ * - Tanda 2: 10% = trigger cuadre, notificación cuando recupera inversión vendedor
+ * - Tanda 3: 20% = trigger cuadre, mini-cuadre al final cuando stock = 0
  */
 @Slf4j
 @Service
@@ -36,25 +48,22 @@ public class InventarioService {
     private final LoteRepository loteRepository;
     private final TandaRepository tandaRepository;
     private final UsuarioRepository usuarioRepository;
-
-    @Value("${trabix.tanda1-porcentaje:40}")
-    private int tanda1Porcentaje;
-
-    @Value("${trabix.tanda2-porcentaje:30}")
-    private int tanda2Porcentaje;
-
-    @Value("${trabix.tanda3-porcentaje:30}")
-    private int tanda3Porcentaje;
-
-    @Value("${trabix.trigger-cuadre-porcentaje:20}")
-    private int triggerCuadrePorcentaje;
+    private final StockProduccionService stockProduccionService;
 
     @Value("${trabix.costo-percibido-unitario:2400}")
     private double costoPercibidoDefault;
 
+    // Umbral para decidir 2 o 3 tandas
+    private static final int UMBRAL_TRES_TANDAS = 50;
+
+    // Porcentajes de alerta y cuadre por tanda
+    private static final int TANDA1_ALERTA_PORCENTAJE = 20;
+    private static final int TANDA2_CUADRE_PORCENTAJE = 10;
+    private static final int TANDA3_CUADRE_PORCENTAJE = 20;
+
     /**
      * Crea un nuevo lote para un vendedor.
-     * Automáticamente crea las 3 tandas y libera la primera.
+     * Automáticamente crea 2 o 3 tandas según la cantidad y libera la primera.
      */
     @Transactional
     public LoteResponse crearLote(CrearLoteRequest request) {
@@ -66,10 +75,7 @@ public class InventarioService {
             throw new ValidacionNegocioException("El usuario no está activo");
         }
 
-        // Verificar que no tenga un lote activo pendiente
-        if (loteRepository.countByUsuarioIdAndEstado(usuario.getId(), EstadoLote.ACTIVO) > 0) {
-            throw new ValidacionNegocioException("El vendedor ya tiene un lote activo. Debe completarlo antes de crear otro.");
-        }
+        // NOTA: Se permiten múltiples lotes activos (eliminada la restricción)
 
         // Determinar modelo de negocio según nivel
         ModeloNegocio modelo = "N2".equals(usuario.getNivel()) 
@@ -93,68 +99,67 @@ public class InventarioService {
 
         lote = loteRepository.save(lote);
 
-        // Crear las 3 tandas
-        crearTandas(lote, request.getCantidad());
+        // Crear tandas (2 o 3 según cantidad)
+        crearTandasDinamicas(lote, request.getCantidad());
 
         // Liberar tanda 1 automáticamente
         Tanda tanda1 = lote.getTandas().get(0);
-        tanda1.liberar();
-        tandaRepository.save(tanda1);
+        liberarTandaInterna(tanda1, usuario);
 
-        log.info("Lote creado: ID={}, Usuario={}, Cantidad={}, Modelo={}", 
-                lote.getId(), usuario.getCedula(), request.getCantidad(), modelo);
+        log.info("✅ Lote creado: ID={}, Usuario={}, Cantidad={}, Tandas={}, Modelo={}", 
+                lote.getId(), usuario.getCedula(), request.getCantidad(), 
+                lote.getTandas().size(), modelo);
 
         return mapToLoteResponse(lote);
     }
 
     /**
-     * Crea las 3 tandas para un lote.
+     * Crea 2 o 3 tandas según la cantidad del lote.
+     * < 50 TRABIX = 2 tandas (50% / 50%)
+     * >= 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
      */
-    private void crearTandas(Lote lote, int cantidadTotal) {
-        // Calcular cantidades (40%, 30%, 30%)
-        int cantidad1 = (int) Math.round(cantidadTotal * tanda1Porcentaje / 100.0);
-        int cantidad2 = (int) Math.round(cantidadTotal * tanda2Porcentaje / 100.0);
-        int cantidad3 = cantidadTotal - cantidad1 - cantidad2; // El resto para evitar errores de redondeo
+    private void crearTandasDinamicas(Lote lote, int cantidadTotal) {
+        List<Integer> cantidades;
 
-        // Crear tanda 1
-        Tanda tanda1 = Tanda.builder()
-                .lote(lote)
-                .numero(1)
-                .cantidadAsignada(cantidad1)
-                .stockEntregado(0)
-                .stockActual(0)
-                .estado(EstadoTanda.PENDIENTE)
-                .build();
+        if (cantidadTotal < UMBRAL_TRES_TANDAS) {
+            // 2 tandas: 50% / 50%
+            int cantidad1 = cantidadTotal / 2;
+            int cantidad2 = cantidadTotal - cantidad1;
+            cantidades = List.of(cantidad1, cantidad2);
+            log.debug("Lote con 2 tandas: {} + {} = {}", cantidad1, cantidad2, cantidadTotal);
+        } else {
+            // 3 tandas: 33.3% / 33.3% / 33.3%
+            int cantidad1 = cantidadTotal / 3;
+            int cantidad2 = cantidadTotal / 3;
+            int cantidad3 = cantidadTotal - cantidad1 - cantidad2;
+            cantidades = List.of(cantidad1, cantidad2, cantidad3);
+            log.debug("Lote con 3 tandas: {} + {} + {} = {}", cantidad1, cantidad2, cantidad3, cantidadTotal);
+        }
 
-        // Crear tanda 2
-        Tanda tanda2 = Tanda.builder()
-                .lote(lote)
-                .numero(2)
-                .cantidadAsignada(cantidad2)
-                .stockEntregado(0)
-                .stockActual(0)
-                .estado(EstadoTanda.PENDIENTE)
-                .build();
+        for (int i = 0; i < cantidades.size(); i++) {
+            Tanda tanda = Tanda.builder()
+                    .lote(lote)
+                    .numero(i + 1)
+                    .cantidadAsignada(cantidades.get(i))
+                    .stockEntregado(0)
+                    .stockActual(0)
+                    .estado(EstadoTanda.PENDIENTE)
+                    .build();
 
-        // Crear tanda 3
-        Tanda tanda3 = Tanda.builder()
-                .lote(lote)
-                .numero(3)
-                .cantidadAsignada(cantidad3)
-                .stockEntregado(0)
-                .stockActual(0)
-                .estado(EstadoTanda.PENDIENTE)
-                .build();
+            tandaRepository.save(tanda);
+            lote.getTandas().add(tanda);
+        }
+    }
 
-        tandaRepository.save(tanda1);
-        tandaRepository.save(tanda2);
-        tandaRepository.save(tanda3);
-
-        lote.getTandas().add(tanda1);
-        lote.getTandas().add(tanda2);
-        lote.getTandas().add(tanda3);
-
-        log.debug("Tandas creadas: T1={}, T2={}, T3={}", cantidad1, cantidad2, cantidad3);
+    /**
+     * Libera una tanda internamente (actualiza stock de producción).
+     */
+    private void liberarTandaInterna(Tanda tanda, Usuario usuario) {
+        tanda.liberar();
+        tandaRepository.save(tanda);
+        
+        // Notificar al servicio de stock de producción
+        stockProduccionService.entregarStockAVendedor(tanda, usuario);
     }
 
     /**
@@ -187,17 +192,39 @@ public class InventarioService {
     }
 
     /**
-     * Obtiene el lote activo de un usuario.
+     * Obtiene el lote activo más antiguo de un usuario (para FIFO).
      */
     @Transactional(readOnly = true)
     public LoteResponse obtenerLoteActivoDeUsuario(Long usuarioId) {
-        Lote lote = loteRepository.findFirstByUsuarioIdAndEstadoOrderByFechaCreacionDesc(usuarioId, EstadoLote.ACTIVO)
-                .orElseThrow(() -> new ValidacionNegocioException("El usuario no tiene un lote activo"));
-        return mapToLoteResponse(lote);
+        // Obtener el lote activo más antiguo (FIFO)
+        List<Lote> lotesActivos = loteRepository.findByUsuarioIdAndEstado(usuarioId, EstadoLote.ACTIVO);
+        
+        if (lotesActivos.isEmpty()) {
+            throw new ValidacionNegocioException("El usuario no tiene lotes activos");
+        }
+
+        // Ordenar por fecha de creación ascendente (más antiguo primero)
+        Lote loteActivo = lotesActivos.stream()
+                .min(Comparator.comparing(Lote::getFechaCreacion))
+                .get();
+
+        return mapToLoteResponse(loteActivo);
     }
 
     /**
-     * Obtiene el stock actual de un usuario.
+     * Obtiene todos los lotes activos de un usuario.
+     */
+    @Transactional(readOnly = true)
+    public List<LoteResponse> obtenerLotesActivosDeUsuario(Long usuarioId) {
+        return loteRepository.findByUsuarioIdAndEstado(usuarioId, EstadoLote.ACTIVO)
+                .stream()
+                .sorted(Comparator.comparing(Lote::getFechaCreacion)) // FIFO
+                .map(this::mapToLoteResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Obtiene el stock actual de un usuario (suma de todas las tandas liberadas).
      */
     @Transactional(readOnly = true)
     public int obtenerStockActualUsuario(Long usuarioId) {
@@ -206,35 +233,69 @@ public class InventarioService {
 
     /**
      * Reduce el stock de la tanda activa de un usuario.
-     * Retorna la tanda afectada.
+     * Usa FIFO: primero agota las tandas del lote más antiguo.
      */
     @Transactional
     public TandaResponse reducirStock(Long usuarioId, int cantidad) {
-        // Buscar tanda activa con stock
+        // Buscar tanda activa con stock (FIFO por lote y tanda)
         Tanda tanda = tandaRepository.findTandaActualParaVenta(usuarioId)
                 .orElseThrow(() -> new ValidacionNegocioException("No hay stock disponible"));
 
         if (tanda.getStockActual() < cantidad) {
             throw new ValidacionNegocioException(
-                    String.format("Stock insuficiente. Disponible: %d, Solicitado: %d", 
+                    String.format("Stock insuficiente en tanda actual. Disponible: %d, Solicitado: %d", 
                             tanda.getStockActual(), cantidad));
         }
 
         tanda.reducirStock(cantidad);
         tandaRepository.save(tanda);
 
-        log.debug("Stock reducido: Tanda={}, Cantidad={}, StockRestante={}", 
-                tanda.getId(), cantidad, tanda.getStockActual());
+        log.debug("Stock reducido: Lote={}, Tanda={}, Cantidad={}, StockRestante={}", 
+                tanda.getLote().getId(), tanda.getNumero(), cantidad, tanda.getStockActual());
 
-        // Verificar si se debe disparar cuadre
-        if (tanda.debeTriggerCuadre(triggerCuadrePorcentaje)) {
-            log.info("🔔 TRIGGER CUADRE: Tanda {} del lote {} tiene {}% de stock", 
-                    tanda.getNumero(), tanda.getLote().getId(), 
-                    Math.round(tanda.getPorcentajeStockRestante()));
-            // El cuadre real se maneja en billing-service
-        }
+        // Verificar triggers según número de tanda
+        verificarTriggersTanda(tanda);
 
         return mapToTandaResponse(tanda);
+    }
+
+    /**
+     * Verifica los triggers de alerta/cuadre según la tanda.
+     */
+    private void verificarTriggersTanda(Tanda tanda) {
+        double porcentajeRestante = tanda.getPorcentajeStockRestante();
+        int numeroTanda = tanda.getNumero();
+        int totalTandas = tanda.getLote().getTandas().size();
+
+        // Determinar si es la última tanda (puede ser tanda 2 o 3)
+        boolean esUltimaTanda = numeroTanda == totalTandas;
+
+        if (numeroTanda == 1) {
+            // Tanda 1: 20% = SOLO ALERTA (no cuadre)
+            if (porcentajeRestante <= TANDA1_ALERTA_PORCENTAJE && porcentajeRestante > 0) {
+                log.info("📢 ALERTA Tanda 1: Lote {} tiene {}% de stock restante", 
+                        tanda.getLote().getId(), Math.round(porcentajeRestante));
+                // El cuadre se dispara cuando se recupera inversión de Samuel (billing-service)
+            }
+        } else if (!esUltimaTanda) {
+            // Tanda intermedia (solo aplica cuando hay 3 tandas): 10% = trigger cuadre
+            if (porcentajeRestante <= TANDA2_CUADRE_PORCENTAJE) {
+                log.info("🔔 TRIGGER CUADRE Tanda {}: Lote {} tiene {}% de stock", 
+                        numeroTanda, tanda.getLote().getId(), Math.round(porcentajeRestante));
+            }
+        } else {
+            // Última tanda (2 o 3): 20% = trigger cuadre
+            if (porcentajeRestante <= TANDA3_CUADRE_PORCENTAJE && porcentajeRestante > 0) {
+                log.info("🔔 TRIGGER CUADRE Tanda {} (final): Lote {} tiene {}% de stock", 
+                        numeroTanda, tanda.getLote().getId(), Math.round(porcentajeRestante));
+            }
+            
+            // Mini-cuadre cuando se agota completamente
+            if (tanda.getStockActual() == 0) {
+                log.info("🏁 MINI-CUADRE FINAL: Lote {} - Tanda {} agotada", 
+                        tanda.getLote().getId(), numeroTanda);
+            }
+        }
     }
 
     /**
@@ -262,10 +323,9 @@ public class InventarioService {
         }
 
         // Liberar la tanda
-        tandaPendiente.liberar();
-        tandaRepository.save(tandaPendiente);
+        liberarTandaInterna(tandaPendiente, lote.getUsuario());
 
-        log.info("Tanda liberada: Lote={}, Tanda={}, Stock={}", 
+        log.info("✅ Tanda liberada: Lote={}, Tanda={}, Stock={}", 
                 loteId, tandaPendiente.getNumero(), tandaPendiente.getStockEntregado());
 
         return mapToTandaResponse(tandaPendiente);
@@ -286,7 +346,7 @@ public class InventarioService {
         tanda.iniciarCuadre();
         tandaRepository.save(tanda);
 
-        log.info("Cuadre iniciado: Tanda={}", tandaId);
+        log.info("📝 Cuadre iniciado: Lote={}, Tanda={}", tanda.getLote().getId(), tandaId);
         return mapToTandaResponse(tanda);
     }
 
@@ -310,10 +370,10 @@ public class InventarioService {
         if (lote.estaCompletado()) {
             lote.setEstado(EstadoLote.COMPLETADO);
             loteRepository.save(lote);
-            log.info("🎉 Lote completado: {}", lote.getId());
+            log.info("🎉 LOTE COMPLETADO: {} - Todas las tandas cuadradas", lote.getId());
         }
 
-        log.info("Cuadre completado: Tanda={}", tandaId);
+        log.info("✅ Cuadre completado: Lote={}, Tanda={}", lote.getId(), tandaId);
         return mapToTandaResponse(tanda);
     }
 
@@ -340,11 +400,30 @@ public class InventarioService {
 
     /**
      * Lista tandas que requieren cuadre.
+     * Considera los porcentajes correctos según número de tanda.
      */
     @Transactional(readOnly = true)
     public List<TandaResponse> listarTandasParaCuadre() {
-        return tandaRepository.findTandasParaCuadre(triggerCuadrePorcentaje)
-                .stream()
+        // Obtener todas las tandas liberadas
+        List<Tanda> tandasLiberadas = tandaRepository.findByEstado(EstadoTanda.LIBERADA);
+        
+        return tandasLiberadas.stream()
+                .filter(t -> {
+                    double porcentaje = t.getPorcentajeStockRestante();
+                    int totalTandas = t.getLote().getTandas().size();
+                    boolean esUltimaTanda = t.getNumero() == totalTandas;
+                    
+                    if (t.getNumero() == 1) {
+                        // Tanda 1: no aparece aquí (su cuadre lo maneja billing)
+                        return false;
+                    } else if (!esUltimaTanda) {
+                        // Tanda intermedia: 10%
+                        return porcentaje <= TANDA2_CUADRE_PORCENTAJE;
+                    } else {
+                        // Última tanda: 20%
+                        return porcentaje <= TANDA3_CUADRE_PORCENTAJE;
+                    }
+                })
                 .map(this::mapToTandaResponse)
                 .collect(Collectors.toList());
     }
@@ -365,10 +444,24 @@ public class InventarioService {
             throw new ValidacionNegocioException("No se puede cancelar un lote con ventas registradas");
         }
 
+        // Devolver stock al inventario de Samuel
+        int stockADevolver = lote.getTandas().stream()
+                .filter(t -> t.getEstado() == EstadoTanda.LIBERADA)
+                .mapToInt(Tanda::getStockActual)
+                .sum();
+
+        if (stockADevolver > 0) {
+            stockProduccionService.devolverStock(
+                    stockADevolver, 
+                    loteId, 
+                    lote.getUsuario().getId(),
+                    "Cancelación de lote " + loteId);
+        }
+
         lote.setEstado(EstadoLote.CANCELADO);
         loteRepository.save(lote);
 
-        log.info("Lote cancelado: {}", loteId);
+        log.info("❌ Lote cancelado: {}. Stock devuelto: {}", loteId, stockADevolver);
     }
 
     // === Métodos de mapeo ===
@@ -423,11 +516,28 @@ public class InventarioService {
             }
         }
 
+        // Determinar si requiere cuadre (según número de tanda)
+        boolean requiereCuadre = false;
+        if (tanda.getEstado() == EstadoTanda.LIBERADA) {
+            double porcentaje = tanda.getPorcentajeStockRestante();
+            int totalTandas = tanda.getLote().getTandas().size();
+            boolean esUltimaTanda = tanda.getNumero() == totalTandas;
+            
+            if (tanda.getNumero() == 1) {
+                // Tanda 1: requiere cuadre lo decide billing-service
+                requiereCuadre = false;
+            } else if (!esUltimaTanda) {
+                requiereCuadre = porcentaje <= TANDA2_CUADRE_PORCENTAJE;
+            } else {
+                requiereCuadre = porcentaje <= TANDA3_CUADRE_PORCENTAJE;
+            }
+        }
+
         return TandaResponse.builder()
                 .id(tanda.getId())
                 .loteId(tanda.getLote().getId())
                 .numero(tanda.getNumero())
-                .descripcion(tanda.getDescripcion())
+                .descripcion(getDescripcionTanda(tanda))
                 .cantidadAsignada(tanda.getCantidadAsignada())
                 .stockEntregado(tanda.getStockEntregado())
                 .stockActual(tanda.getStockActual())
@@ -435,8 +545,33 @@ public class InventarioService {
                 .porcentajeRestante(tanda.getPorcentajeStockRestante())
                 .estado(tanda.getEstado())
                 .fechaLiberacion(tanda.getFechaLiberacion())
-                .requiereCuadre(tanda.debeTriggerCuadre(triggerCuadrePorcentaje))
+                .requiereCuadre(requiereCuadre)
                 .puedeSerLiberada(puedeSerLiberada)
                 .build();
+    }
+
+    /**
+     * Genera descripción de tanda según número y total de tandas.
+     */
+    private String getDescripcionTanda(Tanda tanda) {
+        int numero = tanda.getNumero();
+        int total = tanda.getLote().getTandas().size();
+
+        if (total == 2) {
+            // 2 tandas
+            return switch (numero) {
+                case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
+                case 2 -> "Tanda 2 (Recuperar inversión vendedor + Ganancias)";
+                default -> "Tanda " + numero;
+            };
+        } else {
+            // 3 tandas
+            return switch (numero) {
+                case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
+                case 2 -> "Tanda 2 (Recuperar inversión vendedor)";
+                case 3 -> "Tanda 3 (Ganancias puras)";
+                default -> "Tanda " + numero;
+            };
+        }
     }
 }
