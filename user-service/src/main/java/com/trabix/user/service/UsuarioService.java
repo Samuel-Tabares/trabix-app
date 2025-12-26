@@ -10,6 +10,7 @@ import com.trabix.user.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -265,12 +266,78 @@ public class UsuarioService {
         return nuevoPassword;
     }
 
+    /**
+     * Obtiene el nivel más profundo actual en el sistema.
+     */
+    @Transactional(readOnly = true)
+    public Integer obtenerNivelMaximoActual() {
+        Integer nivel = usuarioRepository.obtenerNivelMaximo();
+        return nivel != null ? nivel : 1;
+    }
+
+    /**
+     * Obtiene estadísticas generales del árbol de usuarios.
+     */
+    @Transactional(readOnly = true)
+    public EstadisticasArbolResponse obtenerEstadisticasArbol() {
+        Integer nivelMaximo = obtenerNivelMaximoActual();
+        long totalUsuarios = usuarioRepository.count();
+        long usuariosActivos = usuarioRepository.findByEstado(EstadoUsuario.ACTIVO, 
+                PageRequest.of(0, 1)).getTotalElements();
+        
+        String alertaNivel = null;
+        if (nivelMaximo >= NIVEL_ALERTA_CRITICO) {
+            alertaNivel = "CRÍTICO: Próximo al límite máximo (N" + NIVEL_MAXIMO + ")";
+        } else if (nivelMaximo >= NIVEL_ALERTA_INICIAL) {
+            alertaNivel = "ATENCIÓN: Árbol con profundidad considerable";
+        }
+        
+        return EstadisticasArbolResponse.builder()
+                .nivelMaximoActual(nivelMaximo)
+                .nivelLimite(NIVEL_MAXIMO)
+                .nivelAlertaInicial(NIVEL_ALERTA_INICIAL)
+                .nivelAlertaCritico(NIVEL_ALERTA_CRITICO)
+                .totalUsuarios((int) totalUsuarios)
+                .usuariosActivos((int) usuariosActivos)
+                .alertaNivel(alertaNivel)
+                .build();
+    }
+
     // === Métodos privados ===
+
+    private static final int NIVEL_ALERTA_INICIAL = 15;
+    private static final int NIVEL_ALERTA_CRITICO = 25;
+    private static final int NIVEL_MAXIMO = 30;
+
+    /**
+     * Verifica si un usuario está en la cadena de reclutados de otro.
+     */
+    public boolean verificarEsReclutadoDe(Long usuarioId, Long posibleReclutadorId) {
+        return usuarioRepository.verificarEsReclutadoDe(usuarioId, posibleReclutadorId) > 0;
+    }
 
     private String calcularNivelHijo(String nivelPadre) {
         // Extraer número del nivel (N2 -> 2, N3 -> 3, etc.)
         int numeroNivel = Integer.parseInt(nivelPadre.substring(1));
-        return "N" + (numeroNivel + 1);
+        int nuevoNivel = numeroNivel + 1;
+        
+        // Validar límite máximo
+        if (nuevoNivel > NIVEL_MAXIMO) {
+            throw new ValidacionNegocioException(
+                "Se alcanzó el límite máximo de niveles (N" + NIVEL_MAXIMO + "). " +
+                "Contacte al administrador para aumentar el cupo."
+            );
+        }
+        
+        // Alertas por niveles (se loguean, el frontend puede mostrar notificación)
+        if (nuevoNivel == NIVEL_ALERTA_INICIAL) {
+            log.warn("⚠️ ALERTA: Se alcanzó el nivel N{} en el árbol de cascada", nuevoNivel);
+        } else if (nuevoNivel == NIVEL_ALERTA_CRITICO) {
+            log.warn("🚨 ALERTA CRÍTICA: Se alcanzó el nivel N{}. Próximo al límite máximo (N{})", 
+                    nuevoNivel, NIVEL_MAXIMO);
+        }
+        
+        return "N" + nuevoNivel;
     }
 
     private String generarPassword() {
@@ -311,6 +378,8 @@ public class UsuarioService {
                     .id(usuario.getReclutador().getId())
                     .nombre(usuario.getReclutador().getNombre())
                     .nivel(usuario.getReclutador().getNivel())
+                    .telefono(usuario.getReclutador().getTelefono())
+                    .correo(usuario.getReclutador().getCorreo())
                     .build();
         }
 

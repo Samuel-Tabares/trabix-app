@@ -210,12 +210,25 @@ public class UsuarioController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    @GetMapping("/estadisticas")
+    @Operation(summary = "Estadísticas del árbol", description = "Obtiene estadísticas generales del árbol de usuarios. Solo ADMIN.")
+    public ResponseEntity<ApiResponse<EstadisticasArbolResponse>> obtenerEstadisticas(
+            @AuthenticationPrincipal Usuario usuarioActual) {
+        
+        if (usuarioActual.getRol() != RolUsuario.ADMIN) {
+            throw new AccesoNoAutorizadoException("Solo el administrador puede ver las estadísticas");
+        }
+        
+        EstadisticasArbolResponse response = usuarioService.obtenerEstadisticasArbol();
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
     // === Método auxiliar ===
     
+    /**
+     * Verifica si un usuario está en la cadena de reclutados de otro (toda la cadena hacia abajo).
+     */
     private boolean esReclutadoDe(Long usuarioId, Long posibleReclutadorId) {
-        // TODO: Implementar verificación recursiva en el árbol
-        // Por ahora, solo verificamos reclutados directos
-        List<UsuarioResponse> reclutados = usuarioService.obtenerReclutadosDirectos(posibleReclutadorId);
-        return reclutados.stream().anyMatch(r -> r.getId().equals(usuarioId));
+        return usuarioService.verificarEsReclutadoDe(usuarioId, posibleReclutadorId);
     }
 }

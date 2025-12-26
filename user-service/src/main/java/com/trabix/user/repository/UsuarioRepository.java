@@ -76,4 +76,27 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
         SELECT COUNT(*) - 1 FROM arbol
         """, nativeQuery = true)
     long contarTotalReclutados(@Param("usuarioId") Long usuarioId);
+
+    /**
+     * Verifica si un usuario está en la cadena de reclutados de otro (hacia abajo).
+     * Retorna 1 si usuarioId está en el árbol de reclutadorId, 0 si no.
+     */
+    @Query(value = """
+        WITH RECURSIVE arbol AS (
+            SELECT id FROM usuarios WHERE reclutador_id = :reclutadorId
+            UNION ALL
+            SELECT u.id FROM usuarios u
+            INNER JOIN arbol a ON u.reclutador_id = a.id
+        )
+        SELECT COUNT(*) FROM arbol WHERE id = :usuarioId
+        """, nativeQuery = true)
+    long verificarEsReclutadoDe(@Param("usuarioId") Long usuarioId, @Param("reclutadorId") Long reclutadorId);
+
+    /**
+     * Obtiene el nivel más profundo en todo el sistema.
+     */
+    @Query(value = """
+        SELECT MAX(CAST(SUBSTRING(nivel FROM 2) AS INTEGER)) FROM usuarios WHERE estado = 'ACTIVO'
+        """, nativeQuery = true)
+    Integer obtenerNivelMaximo();
 }
