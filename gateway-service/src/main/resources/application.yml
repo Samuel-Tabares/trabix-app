@@ -28,17 +28,31 @@ spring:
               - Content-Disposition
             maxAge: 3600
       
-      # Rutas a los microservicios
+      # ============================================================
+      # RUTAS A LOS MICROSERVICIOS
+      # Patrón: /api/[ruta]/** → StripPrefix=1 → /[ruta]/**
+      # ============================================================
       routes:
-        # Auth Service - /api/auth/** -> /auth/**
+        
+        # ===========================================================
+        # AUTH SERVICE (Puerto 8080)
+        # Controlador: @RequestMapping("/auth")
+        # ===========================================================
         - id: auth-service
           uri: ${AUTH_SERVICE_URL:http://localhost:8080}
           predicates:
             - Path=/api/auth/**
           filters:
             - StripPrefix=1
+          # POST /api/auth/login → /auth/login
+          # POST /api/auth/refresh → /auth/refresh
+          # POST /api/auth/logout → /auth/logout
+          # GET  /api/auth/me → /auth/me
 
-        # User Service - /api/users/** -> /usuarios/**
+        # ===========================================================
+        # USER SERVICE (Puerto 8081)
+        # Controlador: @RequestMapping("/usuarios")
+        # ===========================================================
         - id: user-service
           uri: ${USER_SERVICE_URL:http://localhost:8081}
           predicates:
@@ -46,7 +60,10 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Inventory Service - Lotes
+        # ===========================================================
+        # INVENTORY SERVICE (Puerto 8082)
+        # Controladores: /lotes, /tandas
+        # ===========================================================
         - id: inventory-lotes
           uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
           predicates:
@@ -54,7 +71,6 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Inventory Service - Tandas
         - id: inventory-tandas
           uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
           predicates:
@@ -62,7 +78,10 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Sales Service
+        # ===========================================================
+        # SALES SERVICE (Puerto 8083)
+        # Controlador: @RequestMapping("/ventas")
+        # ===========================================================
         - id: sales-service
           uri: ${SALES_SERVICE_URL:http://localhost:8083}
           predicates:
@@ -70,7 +89,10 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Billing Service
+        # ===========================================================
+        # BILLING SERVICE (Puerto 8084)
+        # Controlador: @RequestMapping("/cuadres")
+        # ===========================================================
         - id: billing-service
           uri: ${BILLING_SERVICE_URL:http://localhost:8084}
           predicates:
@@ -78,15 +100,17 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Finance Service - Configuración
-        - id: finance-config
+        # ===========================================================
+        # FINANCE SERVICE (Puerto 8085)
+        # Controladores: /costos/produccion, /costos/configuracion, /fondo
+        # ===========================================================
+        - id: finance-costos
           uri: ${FINANCE_SERVICE_URL:http://localhost:8085}
           predicates:
-            - Path=/api/configuracion/**
+            - Path=/api/costos/**
           filters:
             - StripPrefix=1
 
-        # Finance Service - Fondo
         - id: finance-fondo
           uri: ${FINANCE_SERVICE_URL:http://localhost:8085}
           predicates:
@@ -94,15 +118,10 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Finance Service - Costos Producción
-        - id: finance-costos
-          uri: ${FINANCE_SERVICE_URL:http://localhost:8085}
-          predicates:
-            - Path=/api/costos-produccion/**
-          filters:
-            - StripPrefix=1
-
-        # Equipment Service - Equipos
+        # ===========================================================
+        # EQUIPMENT SERVICE (Puerto 8086)
+        # Controladores: /equipos, /mensualidades
+        # ===========================================================
         - id: equipment-equipos
           uri: ${EQUIPMENT_SERVICE_URL:http://localhost:8086}
           predicates:
@@ -110,7 +129,6 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Equipment Service - Mensualidades
         - id: equipment-mensualidades
           uri: ${EQUIPMENT_SERVICE_URL:http://localhost:8086}
           predicates:
@@ -118,7 +136,10 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Document Service
+        # ===========================================================
+        # DOCUMENT SERVICE (Puerto 8087)
+        # Controlador: @RequestMapping("/documentos")
+        # ===========================================================
         - id: document-service
           uri: ${DOCUMENT_SERVICE_URL:http://localhost:8087}
           predicates:
@@ -126,7 +147,10 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Notification Service
+        # ===========================================================
+        # NOTIFICATION SERVICE (Puerto 8088)
+        # Controlador: @RequestMapping("/notificaciones")
+        # ===========================================================
         - id: notification-service
           uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8088}
           predicates:
@@ -134,7 +158,10 @@ spring:
           filters:
             - StripPrefix=1
 
-        # Backup Service
+        # ===========================================================
+        # BACKUP SERVICE (Puerto 8089)
+        # Controlador: @RequestMapping("/backups")
+        # ===========================================================
         - id: backup-service
           uri: ${BACKUP_SERVICE_URL:http://localhost:8089}
           predicates:

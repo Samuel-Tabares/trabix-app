@@ -1,0 +1,11 @@
+auth-service:8080:10070
+user-service:8081:10072
+inventory-service:8082:10069
+sales-service:8083:10067
+billing-service:8084:10071
+finance-service:8085:10073
+equipment-service:8086:10074
+document-service:8087:10078
+notification-service:8088:10075
+backup-service:8089:10077
+gateway-service:8090:10076
