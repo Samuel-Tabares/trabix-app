@@ -50,7 +50,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     @Query("SELECT u FROM Usuario u WHERE LOWER(u.nombre) LIKE LOWER(CONCAT('%', :nombre, '%')) AND u.estado = :estado")
     List<Usuario> buscarPorNombre(@Param("nombre") String nombre, @Param("estado") EstadoUsuario estado);
 
-    // Obtener todo el árbol hacia abajo desde un usuario (reclutados recursivos)
+    // Obtener toddo el árbol hacia abajo desde un usuario (reclutados recursivos)
     @Query(value = """
         WITH RECURSIVE arbol AS (
             SELECT id, nombre, cedula, nivel, estado, reclutador_id, 1 as profundidad
@@ -65,7 +65,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
         """, nativeQuery = true)
     List<Object[]> obtenerArbolReclutados(@Param("usuarioId") Long usuarioId);
 
-    // Contar total de reclutados en todo el árbol
+    // Contar total de reclutados en toddo el árbol
     @Query(value = """
         WITH RECURSIVE arbol AS (
             SELECT id FROM usuarios WHERE id = :usuarioId
@@ -93,7 +93,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     long verificarEsReclutadoDe(@Param("usuarioId") Long usuarioId, @Param("reclutadorId") Long reclutadorId);
 
     /**
-     * Obtiene el nivel más profundo en todo el sistema.
+     * Obtiene el nivel más profundo en toddo el sistema.
      */
     @Query(value = """
         SELECT MAX(CAST(SUBSTRING(nivel FROM 2) AS INTEGER)) FROM usuarios WHERE estado = 'ACTIVO'

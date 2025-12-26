@@ -18,7 +18,7 @@ import java.util.List;
  * Servicio para calcular cuadres según el modelo de negocio.
  * 
  * MODELO 60/40 (N2): 60% vendedor, 40% Samuel
- * MODELO 50/50 CASCADA (N3+): Todo va a Samuel, él distribuye
+ * MODELO 50/50 CASCADA (N3+): Toddo va a Samuel, él distribuye
  */
 @Slf4j
 @Service
