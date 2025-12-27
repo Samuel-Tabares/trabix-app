@@ -75,7 +75,7 @@ public class BackupController {
     }
 
     @GetMapping("/estadisticas")
-    public ResponseEntity<BackupDTO.EstadisticasBackup> obtenerEstadisticasActuales() {
+    public ResponseEntity<BackupDTO.EstadisticasActuales> obtenerEstadisticasActuales() {
         return ResponseEntity.ok(service.obtenerEstadisticasActuales());
     }
 

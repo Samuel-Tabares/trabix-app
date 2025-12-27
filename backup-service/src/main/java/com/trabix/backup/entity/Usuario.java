@@ -5,10 +5,11 @@ import lombok.*;
 
 /**
  * Entidad Usuario simplificada para backup-service.
+ * Solo lectura.
  */
 @Entity
 @Table(name = "usuarios")
-@Data
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 public class Usuario {
@@ -17,26 +18,19 @@ public class Usuario {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 20)
     private String cedula;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String nombre;
 
-    @Column(nullable = false)
-    private String telefono;
-
-    private String correo;
-
-    @Column(nullable = false)
-    private String nivel;
-
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private String rol;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private String estado;
 
-    @Column(name = "reclutado_por_id")
-    private Long reclutadoPorId;
+    public boolean esAdmin() {
+        return "ADMIN".equals(rol);
+    }
 }

@@ -39,6 +39,7 @@ public class SecurityConfig {
                 // Endpoints públicos (solo health check)
                 .requestMatchers(
                     "/actuator/health",
+                    "/actuator/info",
                     "/error"
                 ).permitAll()
                 

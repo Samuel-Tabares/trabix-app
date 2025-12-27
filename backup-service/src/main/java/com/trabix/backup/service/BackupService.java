@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.trabix.backup.dto.BackupDTO;
 import com.trabix.backup.entity.Backup;
+import com.trabix.backup.entity.EstadoBackup;
 import com.trabix.backup.repository.BackupRepository;
 import com.trabix.common.exception.RecursoNoEncontradoException;
 import com.trabix.common.exception.ValidacionNegocioException;
@@ -19,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.*;
@@ -52,6 +54,36 @@ public class BackupService {
 
     private ObjectMapper objectMapper;
 
+    /**
+     * Lista de tablas a incluir en el backup.
+     * Orden importante: primero las que no tienen FK, luego las dependientes.
+     */
+    private static final List<String> TABLAS_BACKUP = Arrays.asList(
+            // Usuarios primero (no tiene FK)
+            "usuarios",
+            // Stock de equipos
+            "stock_equipos",
+            // Configuración
+            "configuracion_costos",
+            // Inventario y ventas
+            "lotes",
+            "tandas",
+            "ventas",
+            // Equipos
+            "asignaciones_equipo",
+            "pagos_mensualidad",
+            // Documentos
+            "documentos",
+            // Finanzas
+            "fondo_recompensas",
+            "movimientos_fondo",
+            "costos_produccion",
+            // Notificaciones
+            "notificaciones",
+            // Backups (metadata)
+            "backups"
+    );
+
     @PostConstruct
     public void init() {
         // Configurar ObjectMapper
@@ -72,11 +104,19 @@ public class BackupService {
         }
     }
 
+    // ==================== CREAR BACKUP ====================
+
     /**
      * Crea un backup completo del sistema.
      */
     @Transactional
     public BackupDTO.Response crearBackup(BackupDTO.CreateRequest request, Long usuarioId) {
+        // Verificar que no haya backup en proceso
+        if (repository.existsByEstado(EstadoBackup.EN_PROCESO)) {
+            throw new ValidacionNegocioException(
+                    "Ya hay un backup en proceso. Espere a que termine antes de crear otro.");
+        }
+
         // Generar nombre único
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss"));
         String nombre = prefijoBackup + "_" + timestamp;
@@ -87,7 +127,7 @@ public class BackupService {
         Backup backup = Backup.builder()
                 .nombre(nombre)
                 .archivo(rutaCompleta)
-                .estado("EN_PROCESO")
+                .estado(EstadoBackup.EN_PROCESO)
                 .fechaInicio(LocalDateTime.now())
                 .notas(request != null ? request.getNotas() : null)
                 .createdBy(usuarioId)
@@ -104,9 +144,10 @@ public class BackupService {
 
     /**
      * Ejecuta el backup de forma asíncrona.
+     * Usa REQUIRES_NEW para que tenga su propia transacción.
      */
-    @Async
-    @Transactional
+    @Async("taskExecutor")
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void ejecutarBackupAsync(Long backupId) {
         Backup backup = repository.findById(backupId).orElse(null);
         if (backup == null) {
@@ -135,8 +176,8 @@ public class BackupService {
             backup.completar(tamano);
             repository.save(backup);
 
-            log.info("Backup completado: {} - Tamaño: {} - Archivo: {}", 
-                    backup.getNombre(), backup.getTamanoFormateado(), backup.getArchivo());
+            log.info("Backup completado: {} - Tamaño: {} - Duración: {}", 
+                    backup.getNombre(), backup.getTamanoFormateado(), backup.getDuracionFormateada());
 
         } catch (Exception e) {
             log.error("Error al crear backup {}: {}", backup.getNombre(), e.getMessage(), e);
@@ -156,92 +197,49 @@ public class BackupService {
         metadata.put("id", backup.getId());
         metadata.put("nombre", backup.getNombre());
         metadata.put("fechaCreacion", LocalDateTime.now().toString());
-        metadata.put("version", "1.0");
+        metadata.put("version", "2.0");
         metadata.put("sistema", "TRABIX");
+        metadata.put("tablas", TABLAS_BACKUP);
         datos.put("metadata", metadata);
 
-        // Usuarios
-        List<Map<String, Object>> usuarios = jdbcTemplate.queryForList(
-                "SELECT * FROM usuarios ORDER BY id");
-        backup.setTotalUsuarios(usuarios.size());
-        datos.put("usuarios", usuarios);
-
-        // Ventas
-        List<Map<String, Object>> ventas = jdbcTemplate.queryForList(
-                "SELECT * FROM ventas ORDER BY id");
-        backup.setTotalVentas(ventas.size());
-        datos.put("ventas", ventas);
-
-        // Lotes
-        List<Map<String, Object>> lotes = jdbcTemplate.queryForList(
-                "SELECT * FROM lotes ORDER BY id");
-        backup.setTotalLotes(lotes.size());
-        datos.put("lotes", lotes);
-
-        // Tandas
-        List<Map<String, Object>> tandas = jdbcTemplate.queryForList(
-                "SELECT * FROM tandas ORDER BY id");
-        backup.setTotalTandas(tandas.size());
-        datos.put("tandas", tandas);
-
-        // Equipos
-        List<Map<String, Object>> equipos = jdbcTemplate.queryForList(
-                "SELECT * FROM equipos ORDER BY id");
-        backup.setTotalEquipos(equipos.size());
-        datos.put("equipos", equipos);
-
-        // Pagos de mensualidad
-        List<Map<String, Object>> pagosMensualidad = jdbcTemplate.queryForList(
-                "SELECT * FROM pagos_mensualidad ORDER BY id");
-        datos.put("pagosMensualidad", pagosMensualidad);
-
-        // Documentos
-        List<Map<String, Object>> documentos = jdbcTemplate.queryForList(
-                "SELECT * FROM documentos ORDER BY id");
-        backup.setTotalDocumentos(documentos.size());
-        datos.put("documentos", documentos);
-
-        // Notificaciones
-        List<Map<String, Object>> notificaciones = jdbcTemplate.queryForList(
-                "SELECT * FROM notificaciones ORDER BY id");
-        backup.setTotalNotificaciones(notificaciones.size());
-        datos.put("notificaciones", notificaciones);
-
-        // Configuración de costos
-        List<Map<String, Object>> configuracionCostos = jdbcTemplate.queryForList(
-                "SELECT * FROM configuracion_costos ORDER BY id");
-        datos.put("configuracionCostos", configuracionCostos);
-
-        // Fondo de recompensas
-        List<Map<String, Object>> fondoRecompensas = jdbcTemplate.queryForList(
-                "SELECT * FROM fondo_recompensas ORDER BY id");
-        datos.put("fondoRecompensas", fondoRecompensas);
-
-        // Movimientos del fondo
-        List<Map<String, Object>> movimientosFondo = jdbcTemplate.queryForList(
-                "SELECT * FROM movimientos_fondo ORDER BY id");
-        datos.put("movimientosFondo", movimientosFondo);
-
-        // Costos de producción
-        List<Map<String, Object>> costosProduccion = jdbcTemplate.queryForList(
-                "SELECT * FROM costos_produccion ORDER BY id");
-        datos.put("costosProduccion", costosProduccion);
-
-        // Cuadres
-        try {
-            List<Map<String, Object>> cuadres = jdbcTemplate.queryForList(
-                    "SELECT * FROM cuadres ORDER BY id");
-            datos.put("cuadres", cuadres);
-        } catch (Exception e) {
-            // Tabla puede no existir
-            datos.put("cuadres", new ArrayList<>());
+        // Exportar cada tabla
+        for (String tabla : TABLAS_BACKUP) {
+            try {
+                List<Map<String, Object>> registros = jdbcTemplate.queryForList(
+                        "SELECT * FROM " + tabla + " ORDER BY id");
+                datos.put(tabla, registros);
+                
+                // Actualizar estadísticas en el backup
+                actualizarEstadisticas(backup, tabla, registros.size());
+                
+                log.debug("Tabla {} exportada: {} registros", tabla, registros.size());
+            } catch (Exception e) {
+                // Si la tabla no existe, guardar lista vacía
+                log.warn("No se pudo exportar tabla {}: {}", tabla, e.getMessage());
+                datos.put(tabla, new ArrayList<>());
+            }
         }
 
-        log.info("Datos recopilados - Usuarios: {}, Ventas: {}, Lotes: {}, Tandas: {}, Equipos: {}, Documentos: {}", 
-                usuarios.size(), ventas.size(), lotes.size(), tandas.size(), equipos.size(), documentos.size());
+        log.info("Datos recopilados - Usuarios: {}, Ventas: {}, Lotes: {}, Asignaciones: {}, Documentos: {}", 
+                backup.getTotalUsuarios(), backup.getTotalVentas(), backup.getTotalLotes(), 
+                backup.getTotalAsignaciones(), backup.getTotalDocumentos());
 
         return datos;
     }
+
+    private void actualizarEstadisticas(Backup backup, String tabla, int cantidad) {
+        switch (tabla) {
+            case "usuarios" -> backup.setTotalUsuarios(cantidad);
+            case "ventas" -> backup.setTotalVentas(cantidad);
+            case "lotes" -> backup.setTotalLotes(cantidad);
+            case "tandas" -> backup.setTotalTandas(cantidad);
+            case "asignaciones_equipo" -> backup.setTotalAsignaciones(cantidad);
+            case "documentos" -> backup.setTotalDocumentos(cantidad);
+            case "notificaciones" -> backup.setTotalNotificaciones(cantidad);
+        }
+    }
+
+    // ==================== CONSULTAS ====================
 
     @Transactional(readOnly = true)
     public BackupDTO.Response obtener(Long id) {
@@ -258,7 +256,7 @@ public class BackupService {
 
     @Transactional(readOnly = true)
     public BackupDTO.ListResponse listarCompletados(Pageable pageable) {
-        Page<Backup> page = repository.findByEstado("COMPLETADO", pageable);
+        Page<Backup> page = repository.findByEstado(EstadoBackup.COMPLETADO, pageable);
         return buildListResponse(page);
     }
 
@@ -272,23 +270,64 @@ public class BackupService {
     @Transactional(readOnly = true)
     public BackupDTO.ResumenResponse obtenerResumen() {
         long total = repository.count();
-        long completados = repository.countByEstado("COMPLETADO");
-        long conError = repository.countByEstado("ERROR");
+        long completados = repository.countByEstado(EstadoBackup.COMPLETADO);
+        long enProceso = repository.countByEstado(EstadoBackup.EN_PROCESO);
+        long conError = repository.countByEstado(EstadoBackup.ERROR);
         Long tamanoTotal = repository.sumarTamanoTotal();
 
-        BackupDTO.Response ultimoBackup = repository.findTopByOrderByFechaInicioDesc()
+        BackupDTO.Response ultimoCompletado = repository
+                .findTopByEstadoOrderByFechaInicioDesc(EstadoBackup.COMPLETADO)
                 .map(this::mapToResponse)
                 .orElse(null);
 
         return BackupDTO.ResumenResponse.builder()
                 .totalBackups(total)
                 .backupsCompletados(completados)
+                .backupsEnProceso(enProceso)
                 .backupsConError(conError)
                 .tamanoTotalBytes(tamanoTotal)
                 .tamanoTotalFormateado(formatearTamano(tamanoTotal))
-                .ultimoBackup(ultimoBackup)
+                .ultimoBackupCompletado(ultimoCompletado)
                 .build();
     }
+
+    @Transactional(readOnly = true)
+    public BackupDTO.EstadisticasActuales obtenerEstadisticasActuales() {
+        return BackupDTO.EstadisticasActuales.builder()
+                .totalUsuarios(contarRegistros("usuarios"))
+                .totalVentas(contarRegistros("ventas"))
+                .totalLotes(contarRegistros("lotes"))
+                .totalTandas(contarRegistros("tandas"))
+                .totalAsignaciones(contarRegistros("asignaciones_equipo"))
+                .stockDisponible(obtenerStockDisponible())
+                .totalDocumentos(contarRegistros("documentos"))
+                .totalNotificaciones(contarRegistros("notificaciones"))
+                .totalCostosProduccion(contarRegistros("costos_produccion"))
+                .totalMovimientosFondo(contarRegistros("movimientos_fondo"))
+                .build();
+    }
+
+    private int contarRegistros(String tabla) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM " + tabla, Integer.class);
+            return count != null ? count : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private int obtenerStockDisponible() {
+        try {
+            Integer stock = jdbcTemplate.queryForObject(
+                    "SELECT kits_disponibles FROM stock_equipos ORDER BY id LIMIT 1", Integer.class);
+            return stock != null ? stock : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    // ==================== DESCARGAR ====================
 
     /**
      * Descarga el archivo .zip de un backup.
@@ -299,7 +338,8 @@ public class BackupService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Backup", id));
 
         if (!backup.estaCompletado()) {
-            throw new ValidacionNegocioException("El backup no está completado");
+            throw new ValidacionNegocioException(
+                    "El backup no está completado. Estado actual: " + backup.getEstado().getNombre());
         }
 
         try {
@@ -307,14 +347,18 @@ public class BackupService {
             Resource resource = new UrlResource(path.toUri());
 
             if (!resource.exists() || !resource.isReadable()) {
-                throw new ValidacionNegocioException("El archivo de backup no existe o no es accesible");
+                throw new ValidacionNegocioException(
+                        "El archivo de backup no existe o no es accesible: " + backup.getArchivo());
             }
 
+            log.info("Descargando backup: {} - {}", backup.getNombre(), backup.getTamanoFormateado());
             return resource;
         } catch (Exception e) {
             throw new ValidacionNegocioException("Error al acceder al archivo: " + e.getMessage());
         }
     }
+
+    // ==================== ELIMINAR ====================
 
     /**
      * Elimina un backup (registro y archivo).
@@ -324,13 +368,19 @@ public class BackupService {
         Backup backup = repository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Backup", id));
 
+        if (backup.estaEnProceso()) {
+            throw new ValidacionNegocioException("No se puede eliminar un backup en proceso");
+        }
+
         // Eliminar archivo físico
         try {
             Path path = Paths.get(backup.getArchivo());
-            Files.deleteIfExists(path);
-            log.info("Archivo eliminado: {}", path);
+            boolean eliminado = Files.deleteIfExists(path);
+            if (eliminado) {
+                log.info("Archivo eliminado: {}", path);
+            }
         } catch (IOException e) {
-            log.warn("No se pudo eliminar el archivo: {}", e.getMessage());
+            log.warn("No se pudo eliminar el archivo {}: {}", backup.getArchivo(), e.getMessage());
         }
 
         // Eliminar registro
@@ -338,18 +388,7 @@ public class BackupService {
         log.info("Backup eliminado: {} (ID: {})", backup.getNombre(), backup.getId());
     }
 
-    @Transactional(readOnly = true)
-    public BackupDTO.EstadisticasBackup obtenerEstadisticasActuales() {
-        return BackupDTO.EstadisticasBackup.builder()
-                .totalUsuarios(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM usuarios", Integer.class))
-                .totalVentas(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM ventas", Integer.class))
-                .totalLotes(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM lotes", Integer.class))
-                .totalTandas(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tandas", Integer.class))
-                .totalEquipos(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM equipos", Integer.class))
-                .totalDocumentos(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documentos", Integer.class))
-                .totalNotificaciones(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones", Integer.class))
-                .build();
-    }
+    // ==================== MÉTODOS PRIVADOS ====================
 
     private String formatearTamano(Long bytes) {
         if (bytes == null || bytes == 0) {
@@ -390,17 +429,20 @@ public class BackupService {
                 .tamanoBytes(b.getTamanoBytes())
                 .tamanoFormateado(b.getTamanoFormateado())
                 .estado(b.getEstado())
+                .estadoDescripcion(b.getEstado().getNombre())
                 .fechaInicio(b.getFechaInicio())
                 .fechaFin(b.getFechaFin())
                 .duracionSegundos(b.getDuracionSegundos())
+                .duracionFormateada(b.getDuracionFormateada())
                 .totalUsuarios(b.getTotalUsuarios())
                 .totalVentas(b.getTotalVentas())
                 .totalLotes(b.getTotalLotes())
                 .totalTandas(b.getTotalTandas())
-                .totalEquipos(b.getTotalEquipos())
+                .totalAsignaciones(b.getTotalAsignaciones())
                 .totalDocumentos(b.getTotalDocumentos())
                 .totalNotificaciones(b.getTotalNotificaciones())
                 .notas(b.getNotas())
+                .mensajeError(b.getMensajeError())
                 .createdBy(b.getCreatedBy())
                 .createdAt(b.getCreatedAt())
                 .build();

@@ -10,6 +10,10 @@ spring:
     username: ${DB_USER:trabix_admin}
     password: ${DB_PASSWORD:trabix_secure_2024}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
 
   jpa:
     hibernate:
@@ -20,7 +24,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
 
-# Configuración JWT
+# Configuración JWT (misma clave que auth-service)
 jwt:
   secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits}
 
@@ -29,7 +33,7 @@ trabix:
   backup:
     # Ruta donde se guardan los backups (cambiar según sistema operativo)
     # Windows: C:\\backups\\trabix
-    # Mac/Linux: /Users/tu-usuario/backups/trabix
+    # Mac/Linux: /Users/tu-usuario/backups/trabix o /var/backups/trabix
     ruta: ${BACKUP_PATH:./backups}
     # Prefijo para nombres de archivo
     prefijo: backup_TRABIX
@@ -38,3 +42,14 @@ trabix:
 logging:
   level:
     com.trabix: DEBUG
+    org.hibernate.SQL: WARN
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
