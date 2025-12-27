@@ -4,7 +4,6 @@ import com.trabix.document.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -21,6 +20,9 @@ import java.util.List;
 
 /**
  * Configuración de seguridad para document-service.
+ * 
+ * Solo el ADMIN puede acceder a este servicio.
+ * Gestiona cotizaciones y facturas.
  */
 @Configuration
 @EnableWebSecurity
@@ -39,15 +41,16 @@ public class SecurityConfig {
                 // Endpoints públicos
                 .requestMatchers(
                     "/actuator/health",
+                    "/actuator/info",
                     "/error"
                 ).permitAll()
                 
-                // Listado general solo admin
-                .requestMatchers(HttpMethod.GET, "/documentos").hasRole("ADMIN")
-                .requestMatchers("/documentos/usuario/**").hasRole("ADMIN")
-                .requestMatchers("/documentos/resumen/**").hasRole("ADMIN")
+                // TODO: Solo ADMIN puede acceder a documentos
+                // El @PreAuthorize en el controller ya lo maneja,
+                // pero agregamos esta capa adicional de seguridad
+                .requestMatchers("/documentos/**").hasRole("ADMIN")
                 
-                // Resto requiere autenticación
+                // Cualquier otra cosa requiere autenticación
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session

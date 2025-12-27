@@ -31,6 +31,14 @@ public class JwtService {
         return extraerClaims(token).get("rol", String.class);
     }
 
+    public String extraerNivel(String token) {
+        return extraerClaims(token).get("nivel", String.class);
+    }
+
+    public Long extraerUsuarioId(String token) {
+        return extraerClaims(token).get("usuarioId", Long.class);
+    }
+
     public boolean esTokenValido(String token) {
         try {
             extraerClaims(token);

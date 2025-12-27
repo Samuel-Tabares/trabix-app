@@ -1,5 +1,7 @@
 package com.trabix.document.dto;
 
+import com.trabix.document.entity.EstadoDocumento;
+import com.trabix.document.entity.TipoDocumento;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -19,7 +21,8 @@ public class DocumentoDTO {
     @AllArgsConstructor
     public static class Response {
         private Long id;
-        private String tipo;
+        private TipoDocumento tipo;
+        private String tipoDescripcion;
         private String numero;
         private Long usuarioId;
         private String usuarioNombre;
@@ -34,10 +37,19 @@ public class DocumentoDTO {
         private BigDecimal total;
         private LocalDateTime fechaEmision;
         private LocalDateTime fechaVencimiento;
-        private String estado;
+        private EstadoDocumento estado;
+        private String estadoDescripcion;
         private String notas;
         private Long cotizacionOrigenId;
+        private String cotizacionOrigenNumero;
         private LocalDateTime createdAt;
+        
+        // Flags de acciones permitidas
+        private boolean puedeEditarse;
+        private boolean puedeEmitirse;
+        private boolean puedePagarse;
+        private boolean puedeAnularse;
+        private boolean puedeConvertirse;
     }
 
     @Data
@@ -46,9 +58,8 @@ public class DocumentoDTO {
     @AllArgsConstructor
     public static class CreateRequest {
         
-        @NotBlank(message = "El tipo es requerido")
-        @Pattern(regexp = "COTIZACION|FACTURA", message = "Tipo inválido. Use: COTIZACION o FACTURA")
-        private String tipo;
+        @NotNull(message = "El tipo es requerido")
+        private TipoDocumento tipo;
         
         @NotBlank(message = "El nombre del cliente es requerido")
         @Size(max = 100, message = "El nombre no puede exceder 100 caracteres")
@@ -76,6 +87,10 @@ public class DocumentoDTO {
         @Size(max = 1000, message = "Las notas no pueden exceder 1000 caracteres")
         private String notas;
         
+        /**
+         * Días de vencimiento para cotizaciones (default: 15).
+         */
+        @Min(value = 1, message = "Los días de vencimiento deben ser al menos 1")
         private Integer diasVencimiento;
     }
 
@@ -110,6 +125,10 @@ public class DocumentoDTO {
         private String notas;
     }
 
+    /**
+     * Item del documento.
+     * Solo TRABIX (granizados) por ahora.
+     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -148,8 +167,14 @@ public class DocumentoDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ConvertirAFacturaRequest {
+        @Size(max = 20, message = "El NIT no puede exceder 20 caracteres")
         private String clienteNit;
+        
+        @Email(message = "Correo inválido")
+        @Size(max = 100, message = "El correo no puede exceder 100 caracteres")
         private String clienteCorreo;
+        
+        @Size(max = 1000, message = "Las notas no pueden exceder 1000 caracteres")
         private String notas;
     }
 
@@ -158,12 +183,14 @@ public class DocumentoDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ResumenDocumentos {
-        private String tipo;
+        private TipoDocumento tipo;
+        private String tipoDescripcion;
         private long total;
         private long borradores;
         private long emitidos;
         private long pagados;
         private long anulados;
+        private long vencidos;
         private BigDecimal totalPagado;
         private BigDecimal totalPendiente;
     }

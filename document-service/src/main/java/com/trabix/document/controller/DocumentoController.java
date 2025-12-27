@@ -1,6 +1,8 @@
 package com.trabix.document.controller;
 
 import com.trabix.document.dto.DocumentoDTO;
+import com.trabix.document.entity.EstadoDocumento;
+import com.trabix.document.entity.TipoDocumento;
 import com.trabix.document.entity.Usuario;
 import com.trabix.document.service.DocumentoService;
 import jakarta.validation.Valid;
@@ -18,16 +20,19 @@ import java.util.List;
 
 /**
  * Controlador para gestión de documentos.
+ * 
+ * Solo el ADMIN puede crear y gestionar documentos.
  * Cotizaciones y Facturas.
  */
 @RestController
 @RequestMapping("/documentos")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class DocumentoController {
 
     private final DocumentoService service;
 
-    // === CRUD ===
+    // ==================== CRUD ====================
 
     @PostMapping
     public ResponseEntity<DocumentoDTO.Response> crear(
@@ -53,7 +58,7 @@ public class DocumentoController {
         return ResponseEntity.ok(service.obtenerPorNumero(numero));
     }
 
-    // === Acciones ===
+    // ==================== ACCIONES ====================
 
     @PostMapping("/{id}/emitir")
     public ResponseEntity<DocumentoDTO.Response> emitir(@PathVariable Long id) {
@@ -77,10 +82,9 @@ public class DocumentoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.convertirAFactura(id, request));
     }
 
-    // === Listados ===
+    // ==================== LISTADOS ====================
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DocumentoDTO.ListResponse> listar(
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamano) {
@@ -90,7 +94,7 @@ public class DocumentoController {
 
     @GetMapping("/tipo/{tipo}")
     public ResponseEntity<DocumentoDTO.ListResponse> listarPorTipo(
-            @PathVariable String tipo,
+            @PathVariable TipoDocumento tipo,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamano) {
         Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("fechaEmision").descending());
@@ -99,22 +103,12 @@ public class DocumentoController {
 
     @GetMapping("/tipo/{tipo}/estado/{estado}")
     public ResponseEntity<DocumentoDTO.ListResponse> listarPorTipoYEstado(
-            @PathVariable String tipo,
-            @PathVariable String estado,
+            @PathVariable TipoDocumento tipo,
+            @PathVariable EstadoDocumento estado,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamano) {
         Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("fechaEmision").descending());
         return ResponseEntity.ok(service.listarPorTipoYEstado(tipo, estado, pageable));
-    }
-
-    @GetMapping("/usuario/{usuarioId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<DocumentoDTO.ListResponse> listarPorUsuario(
-            @PathVariable Long usuarioId,
-            @RequestParam(defaultValue = "0") int pagina,
-            @RequestParam(defaultValue = "20") int tamano) {
-        Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("fechaEmision").descending());
-        return ResponseEntity.ok(service.listarPorUsuario(usuarioId, pageable));
     }
 
     @GetMapping("/buscar")
@@ -124,26 +118,21 @@ public class DocumentoController {
     }
 
     @GetMapping("/recientes/{tipo}")
-    public ResponseEntity<List<DocumentoDTO.Response>> listarRecientes(@PathVariable String tipo) {
+    public ResponseEntity<List<DocumentoDTO.Response>> listarRecientes(
+            @PathVariable TipoDocumento tipo) {
         return ResponseEntity.ok(service.listarRecientes(tipo));
     }
 
-    // === Mis documentos ===
-
-    @GetMapping("/me")
-    public ResponseEntity<DocumentoDTO.ListResponse> misDocumentos(
-            @AuthenticationPrincipal Usuario usuario,
-            @RequestParam(defaultValue = "0") int pagina,
-            @RequestParam(defaultValue = "20") int tamano) {
-        Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("fechaEmision").descending());
-        return ResponseEntity.ok(service.listarPorUsuario(usuario.getId(), pageable));
+    @GetMapping("/vencidas")
+    public ResponseEntity<List<DocumentoDTO.Response>> listarCotizacionesVencidas() {
+        return ResponseEntity.ok(service.listarCotizacionesVencidas());
     }
 
-    // === Resúmenes ===
+    // ==================== RESÚMENES ====================
 
     @GetMapping("/resumen/{tipo}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<DocumentoDTO.ResumenDocumentos> obtenerResumen(@PathVariable String tipo) {
+    public ResponseEntity<DocumentoDTO.ResumenDocumentos> obtenerResumen(
+            @PathVariable TipoDocumento tipo) {
         return ResponseEntity.ok(service.obtenerResumen(tipo));
     }
 }

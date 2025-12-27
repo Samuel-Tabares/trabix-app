@@ -7,6 +7,8 @@ import com.trabix.common.exception.RecursoNoEncontradoException;
 import com.trabix.common.exception.ValidacionNegocioException;
 import com.trabix.document.dto.DocumentoDTO;
 import com.trabix.document.entity.Documento;
+import com.trabix.document.entity.EstadoDocumento;
+import com.trabix.document.entity.TipoDocumento;
 import com.trabix.document.entity.Usuario;
 import com.trabix.document.repository.DocumentoRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,10 @@ import java.util.stream.Collectors;
 
 /**
  * Servicio para gestión de documentos (cotizaciones y facturas).
+ * 
+ * Solo el ADMIN puede crear y gestionar documentos.
+ * Items son solo TRABIX (granizados).
+ * NO se puede anular documento PAGADO.
  */
 @Slf4j
 @Service
@@ -41,11 +48,7 @@ public class DocumentoService {
     @Value("${trabix.documentos.dias-vencimiento-cotizacion:15}")
     private int diasVencimientoCotizacion;
 
-    @Value("${trabix.documentos.prefijo-cotizacion:COT}")
-    private String prefijoCotizacion;
-
-    @Value("${trabix.documentos.prefijo-factura:FAC}")
-    private String prefijoFactura;
+    // ==================== CREAR ====================
 
     @Transactional
     public DocumentoDTO.Response crear(DocumentoDTO.CreateRequest request, Usuario usuario) {
@@ -63,7 +66,7 @@ public class DocumentoService {
 
         // Fecha de vencimiento para cotizaciones
         LocalDateTime fechaVencimiento = null;
-        if ("COTIZACION".equals(request.getTipo())) {
+        if (TipoDocumento.COTIZACION.equals(request.getTipo())) {
             int dias = request.getDiasVencimiento() != null ? 
                     request.getDiasVencimiento() : diasVencimientoCotizacion;
             fechaVencimiento = LocalDateTime.now().plusDays(dias);
@@ -72,7 +75,7 @@ public class DocumentoService {
         Documento documento = Documento.builder()
                 .tipo(request.getTipo())
                 .usuario(usuario)
-                .clienteNombre(request.getClienteNombre())
+                .clienteNombre(request.getClienteNombre().trim())
                 .clienteTelefono(request.getClienteTelefono())
                 .clienteDireccion(request.getClienteDireccion())
                 .clienteNit(request.getClienteNit())
@@ -83,28 +86,33 @@ public class DocumentoService {
                 .total(total)
                 .fechaEmision(LocalDateTime.now())
                 .fechaVencimiento(fechaVencimiento)
-                .estado("BORRADOR")
+                .estado(EstadoDocumento.BORRADOR)
                 .notas(request.getNotas())
                 .build();
 
         Documento saved = repository.save(documento);
         log.info("{} creada: ID={} - Cliente: {} - Total: ${}",
-                saved.getTipo(), saved.getId(), saved.getClienteNombre(), saved.getTotal());
+                saved.getTipo().getDescripcion(), saved.getId(), 
+                saved.getClienteNombre(), saved.getTotal());
 
         return mapToResponse(saved);
     }
+
+    // ==================== ACTUALIZAR ====================
 
     @Transactional
     public DocumentoDTO.Response actualizar(Long id, DocumentoDTO.UpdateRequest request) {
         Documento documento = repository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Documento", id));
 
-        if (!documento.esBorrador()) {
-            throw new ValidacionNegocioException("Solo se pueden editar documentos en estado BORRADOR");
+        if (!documento.puedeEditarse()) {
+            throw new ValidacionNegocioException(
+                    "Solo se pueden editar documentos en estado BORRADOR. Estado actual: " + 
+                    documento.getEstado().getNombre());
         }
 
         if (request.getClienteNombre() != null) {
-            documento.setClienteNombre(request.getClienteNombre());
+            documento.setClienteNombre(request.getClienteNombre().trim());
         }
         if (request.getClienteTelefono() != null) {
             documento.setClienteTelefono(request.getClienteTelefono());
@@ -140,63 +148,81 @@ public class DocumentoService {
         }
 
         Documento saved = repository.save(documento);
-        log.info("{} actualizada: ID={}", saved.getTipo(), saved.getId());
+        log.info("{} actualizada: ID={}", saved.getTipo().getDescripcion(), saved.getId());
 
         return mapToResponse(saved);
     }
+
+    // ==================== EMITIR ====================
 
     @Transactional
     public DocumentoDTO.Response emitir(Long id) {
         Documento documento = repository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Documento", id));
 
-        if (!documento.esBorrador()) {
-            throw new ValidacionNegocioException("Solo se pueden emitir documentos en estado BORRADOR");
+        if (!documento.puedeEmitirse()) {
+            throw new ValidacionNegocioException(
+                    "Solo se pueden emitir documentos en estado BORRADOR. Estado actual: " + 
+                    documento.getEstado().getNombre());
         }
 
-        // Generar número
+        // Generar número con bloqueo para evitar duplicados
         String numero = generarNumero(documento.getTipo());
-        documento.setNumero(numero);
-        documento.emitir();
+        documento.emitir(numero);
 
         Documento saved = repository.save(documento);
         log.info("{} emitida: {} - Cliente: {} - Total: ${}",
-                saved.getTipo(), saved.getNumero(), saved.getClienteNombre(), saved.getTotal());
+                saved.getTipo().getDescripcion(), saved.getNumero(), 
+                saved.getClienteNombre(), saved.getTotal());
 
         return mapToResponse(saved);
     }
+
+    // ==================== MARCAR PAGADO ====================
 
     @Transactional
     public DocumentoDTO.Response marcarPagado(Long id) {
         Documento documento = repository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Documento", id));
 
-        if (!documento.estaEmitido()) {
-            throw new ValidacionNegocioException("Solo se pueden marcar como pagados documentos EMITIDOS");
+        if (!documento.puedePagarse()) {
+            throw new ValidacionNegocioException(
+                    "Solo se pueden marcar como pagados documentos EMITIDOS. Estado actual: " + 
+                    documento.getEstado().getNombre());
         }
 
         documento.marcarPagado();
         Documento saved = repository.save(documento);
-        log.info("{} pagada: {} - Total: ${}", saved.getTipo(), saved.getNumero(), saved.getTotal());
+        log.info("{} pagada: {} - Total: ${}", 
+                saved.getTipo().getDescripcion(), saved.getNumero(), saved.getTotal());
 
         return mapToResponse(saved);
     }
+
+    // ==================== ANULAR ====================
 
     @Transactional
     public DocumentoDTO.Response anular(Long id) {
         Documento documento = repository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Documento", id));
 
-        if (documento.estaAnulado()) {
-            throw new ValidacionNegocioException("El documento ya está anulado");
+        if (!documento.puedeAnularse()) {
+            throw new ValidacionNegocioException(
+                    "No se puede anular el documento. Estado actual: " + 
+                    documento.getEstado().getNombre() + 
+                    ". Nota: Los documentos PAGADOS no pueden anularse.");
         }
 
         documento.anular();
         Documento saved = repository.save(documento);
-        log.info("{} anulada: {}", saved.getTipo(), saved.getNumero() != null ? saved.getNumero() : "ID=" + saved.getId());
+        log.info("{} anulada: {}", 
+                saved.getTipo().getDescripcion(), 
+                saved.tieneNumero() ? saved.getNumero() : "ID=" + saved.getId());
 
         return mapToResponse(saved);
     }
+
+    // ==================== CONVERTIR A FACTURA ====================
 
     @Transactional
     public DocumentoDTO.Response convertirAFactura(Long cotizacionId, DocumentoDTO.ConvertirAFacturaRequest request) {
@@ -204,16 +230,24 @@ public class DocumentoService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cotización", cotizacionId));
 
         if (!cotizacion.esCotizacion()) {
-            throw new ValidacionNegocioException("Solo se pueden convertir cotizaciones a facturas");
+            throw new ValidacionNegocioException("Solo se pueden convertir COTIZACIONES a facturas");
         }
 
-        if (!cotizacion.estaEmitido()) {
-            throw new ValidacionNegocioException("La cotización debe estar emitida para convertirse en factura");
+        if (!cotizacion.estaEmitido() && !cotizacion.estaPagado()) {
+            throw new ValidacionNegocioException(
+                    "La cotización debe estar EMITIDA o PAGADA para convertirse en factura. " +
+                    "Estado actual: " + cotizacion.getEstado().getNombre());
+        }
+
+        // Verificar si ya existe una factura de esta cotización
+        if (repository.existsByCotizacionOrigenId(cotizacionId)) {
+            throw new ValidacionNegocioException(
+                    "Ya existe una factura generada a partir de esta cotización");
         }
 
         // Crear factura basada en la cotización
         Documento factura = Documento.builder()
-                .tipo("FACTURA")
+                .tipo(TipoDocumento.FACTURA)
                 .usuario(cotizacion.getUsuario())
                 .clienteNombre(cotizacion.getClienteNombre())
                 .clienteTelefono(cotizacion.getClienteTelefono())
@@ -227,7 +261,7 @@ public class DocumentoService {
                 .iva(cotizacion.getIva())
                 .total(cotizacion.getTotal())
                 .fechaEmision(LocalDateTime.now())
-                .estado("BORRADOR")
+                .estado(EstadoDocumento.BORRADOR)
                 .notas(request != null && request.getNotas() != null ? 
                         request.getNotas() : cotizacion.getNotas())
                 .cotizacionOrigenId(cotizacionId)
@@ -239,6 +273,8 @@ public class DocumentoService {
 
         return mapToResponse(saved);
     }
+
+    // ==================== CONSULTAS ====================
 
     @Transactional(readOnly = true)
     public DocumentoDTO.Response obtener(Long id) {
@@ -261,14 +297,15 @@ public class DocumentoService {
     }
 
     @Transactional(readOnly = true)
-    public DocumentoDTO.ListResponse listarPorTipo(String tipo, Pageable pageable) {
-        Page<Documento> page = repository.findByTipo(tipo.toUpperCase(), pageable);
+    public DocumentoDTO.ListResponse listarPorTipo(TipoDocumento tipo, Pageable pageable) {
+        Page<Documento> page = repository.findByTipo(tipo, pageable);
         return buildListResponse(page);
     }
 
     @Transactional(readOnly = true)
-    public DocumentoDTO.ListResponse listarPorTipoYEstado(String tipo, String estado, Pageable pageable) {
-        Page<Documento> page = repository.findByTipoAndEstado(tipo.toUpperCase(), estado.toUpperCase(), pageable);
+    public DocumentoDTO.ListResponse listarPorTipoYEstado(
+            TipoDocumento tipo, EstadoDocumento estado, Pageable pageable) {
+        Page<Documento> page = repository.findByTipoAndEstado(tipo, estado, pageable);
         return buildListResponse(page);
     }
 
@@ -286,34 +323,61 @@ public class DocumentoService {
     }
 
     @Transactional(readOnly = true)
-    public List<DocumentoDTO.Response> listarRecientes(String tipo) {
-        return repository.findTop10ByTipoOrderByFechaEmisionDesc(tipo.toUpperCase()).stream()
+    public List<DocumentoDTO.Response> listarRecientes(TipoDocumento tipo) {
+        return repository.findTop10ByTipoOrderByFechaEmisionDesc(tipo).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public DocumentoDTO.ResumenDocumentos obtenerResumen(String tipo) {
-        String tipoUpper = tipo.toUpperCase();
-        
+    public List<DocumentoDTO.Response> listarCotizacionesVencidas() {
+        return repository.findCotizacionesVencidas(LocalDateTime.now()).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    // ==================== RESUMEN ====================
+
+    @Transactional(readOnly = true)
+    public DocumentoDTO.ResumenDocumentos obtenerResumen(TipoDocumento tipo) {
         return DocumentoDTO.ResumenDocumentos.builder()
-                .tipo(tipoUpper)
-                .total(repository.countByTipo(tipoUpper))
-                .borradores(repository.countByTipoAndEstado(tipoUpper, "BORRADOR"))
-                .emitidos(repository.countByTipoAndEstado(tipoUpper, "EMITIDO"))
-                .pagados(repository.countByTipoAndEstado(tipoUpper, "PAGADO"))
-                .anulados(repository.countByTipoAndEstado(tipoUpper, "ANULADO"))
-                .totalPagado(repository.sumarTotalPagadoPorTipo(tipoUpper))
-                .totalPendiente(repository.sumarTotalPendientePorTipo(tipoUpper))
+                .tipo(tipo)
+                .tipoDescripcion(tipo.getDescripcion())
+                .total(repository.countByTipo(tipo))
+                .borradores(repository.countByTipoAndEstado(tipo, EstadoDocumento.BORRADOR))
+                .emitidos(repository.countByTipoAndEstado(tipo, EstadoDocumento.EMITIDO))
+                .pagados(repository.countByTipoAndEstado(tipo, EstadoDocumento.PAGADO))
+                .anulados(repository.countByTipoAndEstado(tipo, EstadoDocumento.ANULADO))
+                .vencidos(repository.countByTipoAndEstado(tipo, EstadoDocumento.VENCIDO))
+                .totalPagado(repository.sumarTotalPagadoPorTipo(tipo))
+                .totalPendiente(repository.sumarTotalPendientePorTipo(tipo))
                 .build();
     }
 
-    private String generarNumero(String tipo) {
-        String prefijo = "COTIZACION".equals(tipo) ? prefijoCotizacion : prefijoFactura;
+    // ==================== TAREA PROGRAMADA ====================
+
+    /**
+     * Marca cotizaciones vencidas automáticamente.
+     * Se ejecuta cada hora.
+     */
+    @Scheduled(fixedRate = 3600000) // cada hora
+    @Transactional
+    public void marcarCotizacionesVencidas() {
+        int actualizados = repository.marcarCotizacionesVencidas(LocalDateTime.now());
+        if (actualizados > 0) {
+            log.info("Cotizaciones marcadas como vencidas: {}", actualizados);
+        }
+    }
+
+    // ==================== MÉTODOS PRIVADOS ====================
+
+    private String generarNumero(TipoDocumento tipo) {
+        String prefijo = tipo.getPrefijo();
         int anio = LocalDateTime.now().getYear();
         
-        Long maxId = repository.findMaxIdByTipoYAnio(tipo, anio).orElse(0L);
-        long consecutivo = maxId + 1;
+        Integer maxConsecutivo = repository.findMaxConsecutivoByTipoYAnio(tipo, prefijo, anio)
+                .orElse(0);
+        int consecutivo = maxConsecutivo + 1;
         
         return String.format("%s-%d-%05d", prefijo, anio, consecutivo);
     }
@@ -347,6 +411,9 @@ public class DocumentoService {
 
     private List<DocumentoDTO.ItemDocumento> deserializarItems(String json) {
         try {
+            if (json == null || json.isBlank()) {
+                return new ArrayList<>();
+            }
             return objectMapper.readValue(json, new TypeReference<List<DocumentoDTO.ItemDocumento>>() {});
         } catch (JsonProcessingException e) {
             log.error("Error al deserializar items: {}", e.getMessage());
@@ -369,9 +436,18 @@ public class DocumentoService {
     }
 
     private DocumentoDTO.Response mapToResponse(Documento doc) {
+        // Obtener número de cotización origen si existe
+        String cotizacionOrigenNumero = null;
+        if (doc.getCotizacionOrigenId() != null) {
+            cotizacionOrigenNumero = repository.findById(doc.getCotizacionOrigenId())
+                    .map(Documento::getNumero)
+                    .orElse(null);
+        }
+
         return DocumentoDTO.Response.builder()
                 .id(doc.getId())
                 .tipo(doc.getTipo())
+                .tipoDescripcion(doc.getTipo().getDescripcion())
                 .numero(doc.getNumero())
                 .usuarioId(doc.getUsuario() != null ? doc.getUsuario().getId() : null)
                 .usuarioNombre(doc.getUsuario() != null ? doc.getUsuario().getNombre() : null)
@@ -387,9 +463,17 @@ public class DocumentoService {
                 .fechaEmision(doc.getFechaEmision())
                 .fechaVencimiento(doc.getFechaVencimiento())
                 .estado(doc.getEstado())
+                .estadoDescripcion(doc.getEstado().getNombre())
                 .notas(doc.getNotas())
                 .cotizacionOrigenId(doc.getCotizacionOrigenId())
+                .cotizacionOrigenNumero(cotizacionOrigenNumero)
                 .createdAt(doc.getCreatedAt())
+                // Flags de acciones
+                .puedeEditarse(doc.puedeEditarse())
+                .puedeEmitirse(doc.puedeEmitirse())
+                .puedePagarse(doc.puedePagarse())
+                .puedeAnularse(doc.puedeAnularse())
+                .puedeConvertirse(doc.esCotizacion() && doc.estaEmitido())
                 .build();
     }
 }
