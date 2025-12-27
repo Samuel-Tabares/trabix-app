@@ -11,6 +11,9 @@ import reactor.core.publisher.Mono;
 
 /**
  * Filtro global que registra todas las peticiones que pasan por el gateway.
+ * 
+ * Logs de entrada: >>> METHOD /path - IP: x.x.x.x
+ * Logs de salida:  <<< METHOD /path - Status: 200 - 45ms
  */
 @Slf4j
 @Component
@@ -21,11 +24,12 @@ public class LoggingFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         
         long startTime = System.currentTimeMillis();
-        String method = request.getMethod().name();
+        String method = request.getMethod() != null ? request.getMethod().name() : "UNKNOWN";
         String path = request.getURI().getPath();
         String clientIp = request.getRemoteAddress() != null ? 
                 request.getRemoteAddress().getAddress().getHostAddress() : "unknown";
 
+        // Log de entrada
         log.info(">>> {} {} - IP: {}", method, path, clientIp);
 
         return chain.filter(exchange).then(Mono.fromRunnable(() -> {
@@ -33,7 +37,12 @@ public class LoggingFilter implements GlobalFilter, Ordered {
             int statusCode = exchange.getResponse().getStatusCode() != null ? 
                     exchange.getResponse().getStatusCode().value() : 0;
             
-            log.info("<<< {} {} - Status: {} - {}ms", method, path, statusCode, duration);
+            // Log de salida con color según status
+            if (statusCode >= 400) {
+                log.warn("<<< {} {} - Status: {} - {}ms", method, path, statusCode, duration);
+            } else {
+                log.info("<<< {} {} - Status: {} - {}ms", method, path, statusCode, duration);
+            }
         }));
     }
 

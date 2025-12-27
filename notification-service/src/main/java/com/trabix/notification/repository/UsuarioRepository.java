@@ -15,4 +15,6 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     Optional<Usuario> findByCedulaAndEstado(String cedula, String estado);
     
     List<Usuario> findByEstado(String estado);
+    
+    long countByEstado(String estado);
 }

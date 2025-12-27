@@ -39,6 +39,7 @@ public class SecurityConfig {
                 // Endpoints públicos
                 .requestMatchers(
                     "/actuator/health",
+                    "/actuator/info",
                     "/error"
                 ).permitAll()
                 
@@ -53,8 +54,14 @@ public class SecurityConfig {
                 .requestMatchers("/notificaciones/usuario/**").hasRole("ADMIN")
                 .requestMatchers("/notificaciones/resumen/**").hasRole("ADMIN")
                 
-                // Mis notificaciones - autenticados
+                // Mis notificaciones - cualquier autenticado
                 .requestMatchers("/notificaciones/me/**").authenticated()
+                
+                // Obtener por ID - cualquier autenticado
+                .requestMatchers(HttpMethod.GET, "/notificaciones/{id}").authenticated()
+                
+                // Eliminar por ID - solo admin
+                .requestMatchers(HttpMethod.DELETE, "/notificaciones/{id}").hasRole("ADMIN")
                 
                 // Resto requiere autenticación
                 .anyRequest().authenticated()

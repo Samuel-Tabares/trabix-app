@@ -3,13 +3,16 @@ package com.trabix.notification.service;
 import com.trabix.common.exception.RecursoNoEncontradoException;
 import com.trabix.notification.dto.NotificacionDTO;
 import com.trabix.notification.entity.Notificacion;
+import com.trabix.notification.entity.TipoNotificacion;
 import com.trabix.notification.entity.Usuario;
 import com.trabix.notification.repository.NotificacionRepository;
 import com.trabix.notification.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +31,11 @@ public class NotificacionService {
     private final NotificacionRepository repository;
     private final UsuarioRepository usuarioRepository;
 
+    @Value("${trabix.notificaciones.dias-limpieza:30}")
+    private int diasLimpieza;
+
+    // ==================== CREAR ====================
+
     @Transactional
     public NotificacionDTO.Response crear(NotificacionDTO.CreateRequest request) {
         Usuario usuario = null;
@@ -38,7 +46,7 @@ public class NotificacionService {
 
         Notificacion notificacion = Notificacion.builder()
                 .usuario(usuario)
-                .tipo(request.getTipo() != null ? request.getTipo() : "INFO")
+                .tipo(request.getTipo() != null ? request.getTipo() : TipoNotificacion.INFO)
                 .titulo(request.getTitulo())
                 .mensaje(request.getMensaje())
                 .referenciaTipo(request.getReferenciaTipo())
@@ -62,7 +70,7 @@ public class NotificacionService {
     public NotificacionDTO.Response crearBroadcast(NotificacionDTO.BroadcastRequest request) {
         Notificacion notificacion = Notificacion.builder()
                 .usuario(null) // Broadcast = sin usuario específico
-                .tipo(request.getTipo() != null ? request.getTipo() : "INFO")
+                .tipo(request.getTipo() != null ? request.getTipo() : TipoNotificacion.INFO)
                 .titulo(request.getTitulo())
                 .mensaje(request.getMensaje())
                 .leida(false)
@@ -73,6 +81,8 @@ public class NotificacionService {
 
         return mapToResponse(saved);
     }
+
+    // ==================== MARCAR LEÍDA ====================
 
     @Transactional
     public NotificacionDTO.Response marcarLeida(Long id) {
@@ -99,6 +109,8 @@ public class NotificacionService {
         return actualizadas;
     }
 
+    // ==================== ELIMINAR ====================
+
     @Transactional
     public void eliminar(Long id) {
         if (!repository.existsById(id)) {
@@ -118,10 +130,24 @@ public class NotificacionService {
     @Transactional
     public int limpiarAntiguas(int diasAntiguedad) {
         LocalDateTime fechaLimite = LocalDateTime.now().minusDays(diasAntiguedad);
-        int eliminadas = repository.eliminarAntiguasMayorA(fechaLimite);
-        log.info("Eliminadas {} notificaciones anteriores a {}", eliminadas, fechaLimite);
+        int eliminadas = repository.eliminarAntiguasLeidasMayorA(fechaLimite);
+        log.info("Eliminadas {} notificaciones leídas anteriores a {}", eliminadas, fechaLimite);
         return eliminadas;
     }
+
+    /**
+     * Limpieza automática de notificaciones antiguas.
+     * Ejecuta diariamente a las 3:00 AM.
+     */
+    @Scheduled(cron = "0 0 3 * * ?")
+    @Transactional
+    public void limpiezaAutomatica() {
+        log.info("Ejecutando limpieza automática de notificaciones...");
+        int eliminadas = limpiarAntiguas(diasLimpieza);
+        log.info("Limpieza automática completada: {} notificaciones eliminadas", eliminadas);
+    }
+
+    // ==================== CONSULTAS ====================
 
     @Transactional(readOnly = true)
     public NotificacionDTO.Response obtener(Long id) {
@@ -167,8 +193,7 @@ public class NotificacionService {
     @Transactional(readOnly = true)
     public NotificacionDTO.ContadorResponse contarPorUsuario(Long usuarioId) {
         long noLeidas = repository.countNoLeidasByUsuario(usuarioId);
-        Page<Notificacion> todas = repository.findByUsuarioIdOrBroadcast(usuarioId, Pageable.unpaged());
-        long total = todas.getTotalElements();
+        long total = repository.countByUsuarioIdOrBroadcast(usuarioId);
 
         return NotificacionDTO.ContadorResponse.builder()
                 .total(total)
@@ -182,31 +207,34 @@ public class NotificacionService {
         List<Object[]> conteos = repository.contarPorTipo();
         
         NotificacionDTO.ResumenTipos resumen = new NotificacionDTO.ResumenTipos();
+        long total = 0;
         
         for (Object[] row : conteos) {
-            String tipo = (String) row[0];
+            TipoNotificacion tipo = (TipoNotificacion) row[0];
             Long count = (Long) row[1];
+            total += count;
             
             switch (tipo) {
-                case "INFO" -> resumen.setInfo(count);
-                case "ALERTA" -> resumen.setAlerta(count);
-                case "RECORDATORIO" -> resumen.setRecordatorio(count);
-                case "SISTEMA" -> resumen.setSistema(count);
-                case "EXITO" -> resumen.setExito(count);
-                case "ERROR" -> resumen.setError(count);
+                case INFO -> resumen.setInfo(count);
+                case ALERTA -> resumen.setAlerta(count);
+                case RECORDATORIO -> resumen.setRecordatorio(count);
+                case SISTEMA -> resumen.setSistema(count);
+                case EXITO -> resumen.setExito(count);
+                case ERROR -> resumen.setError(count);
             }
         }
         
+        resumen.setTotal(total);
         return resumen;
     }
 
-    // === Métodos de utilidad para otros servicios ===
+    // ==================== MÉTODOS DE UTILIDAD PARA OTROS SERVICIOS ====================
 
     /**
      * Crea una notificación simple para un usuario.
      */
     @Transactional
-    public void notificar(Long usuarioId, String tipo, String titulo, String mensaje) {
+    public void notificar(Long usuarioId, TipoNotificacion tipo, String titulo, String mensaje) {
         NotificacionDTO.CreateRequest request = NotificacionDTO.CreateRequest.builder()
                 .usuarioId(usuarioId)
                 .tipo(tipo)
@@ -220,8 +248,14 @@ public class NotificacionService {
      * Crea una notificación con referencia.
      */
     @Transactional
-    public void notificarConReferencia(Long usuarioId, String tipo, String titulo, String mensaje,
+    public void notificarConReferencia(Long usuarioId, TipoNotificacion tipo, String titulo, String mensaje,
                                        String referenciaTipo, Long referenciaId) {
+        // Evitar duplicados
+        if (repository.existsByUsuarioIdAndReferenciaTipoAndReferenciaId(usuarioId, referenciaTipo, referenciaId)) {
+            log.debug("Notificación duplicada evitada: {} {} para usuario {}", referenciaTipo, referenciaId, usuarioId);
+            return;
+        }
+        
         NotificacionDTO.CreateRequest request = NotificacionDTO.CreateRequest.builder()
                 .usuarioId(usuarioId)
                 .tipo(tipo)
@@ -234,10 +268,10 @@ public class NotificacionService {
     }
 
     /**
-     * Envía notificación a todos los usuarios activos.
+     * Envía notificación broadcast a todos.
      */
     @Transactional
-    public void notificarATodos(String tipo, String titulo, String mensaje) {
+    public void notificarATodos(TipoNotificacion tipo, String titulo, String mensaje) {
         NotificacionDTO.BroadcastRequest request = NotificacionDTO.BroadcastRequest.builder()
                 .tipo(tipo)
                 .titulo(titulo)
@@ -245,6 +279,18 @@ public class NotificacionService {
                 .build();
         crearBroadcast(request);
     }
+
+    /**
+     * Elimina notificaciones asociadas a una referencia.
+     */
+    @Transactional
+    public int eliminarPorReferencia(String referenciaTipo, Long referenciaId) {
+        int eliminadas = repository.eliminarPorReferencia(referenciaTipo, referenciaId);
+        log.info("Eliminadas {} notificaciones de {} {}", eliminadas, referenciaTipo, referenciaId);
+        return eliminadas;
+    }
+
+    // ==================== MAPPERS ====================
 
     private NotificacionDTO.ListResponse buildListResponse(Page<Notificacion> page, long noLeidas) {
         List<NotificacionDTO.Response> notificaciones = page.getContent().stream()
@@ -267,6 +313,8 @@ public class NotificacionService {
                 .usuarioId(n.getUsuario() != null ? n.getUsuario().getId() : null)
                 .usuarioNombre(n.getUsuario() != null ? n.getUsuario().getNombre() : null)
                 .tipo(n.getTipo())
+                .tipoNombre(n.getTipo().getNombre())
+                .tipoIcono(n.getTipo().getIcono())
                 .titulo(n.getTitulo())
                 .mensaje(n.getMensaje())
                 .leida(n.getLeida())

@@ -10,6 +10,10 @@ spring:
     username: ${DB_USER:trabix_admin}
     password: ${DB_PASSWORD:trabix_secure_2024}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
 
   jpa:
     hibernate:
@@ -20,11 +24,28 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
 
-# Configuración JWT
+# Configuración JWT (misma clave que auth-service)
 jwt:
   secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits}
+
+# Configuración de notificaciones
+trabix:
+  notificaciones:
+    # Días de antigüedad para limpieza automática
+    dias-limpieza: ${NOTIF_DIAS_LIMPIEZA:30}
 
 # Logging
 logging:
   level:
     com.trabix: DEBUG
+    org.hibernate.SQL: WARN
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized

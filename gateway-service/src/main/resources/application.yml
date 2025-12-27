@@ -62,7 +62,7 @@ spring:
 
         # ===========================================================
         # INVENTORY SERVICE (Puerto 8082)
-        # Controladores: /lotes, /tandas
+        # Controladores: /lotes, /tandas, /stock-produccion
         # ===========================================================
         - id: inventory-lotes
           uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
@@ -84,11 +84,11 @@ spring:
             - Path=/api/stock-produccion/**
           filters:
             - StripPrefix=1
-          # GET  /api/stock-produccion → /stock-produccion (estado completo)
-          # POST /api/stock-produccion/produccion → /stock-produccion/produccion
-          # POST /api/stock-produccion/venta-directa → /stock-produccion/venta-directa
-          # POST /api/stock-produccion/ajuste → /stock-produccion/ajuste
-          # GET  /api/stock-produccion/movimientos → /stock-produccion/movimientos
+          # GET  /api/stock-produccion → /stock-produccion
+          # POST /api/stock-produccion/produccion → registrar producción
+          # POST /api/stock-produccion/venta-directa → registrar venta directa
+          # POST /api/stock-produccion/ajuste → ajuste manual
+          # GET  /api/stock-produccion/movimientos → historial
 
         # ===========================================================
         # SALES SERVICE (Puerto 8083)
@@ -132,14 +132,23 @@ spring:
 
         # ===========================================================
         # EQUIPMENT SERVICE (Puerto 8086)
-        # Controladores: /equipos, /mensualidades
+        # Controladores: /asignaciones, /mensualidades, /stock
+        # 
+        # MODELO: Kit = Nevera + Pijama (siempre juntos)
         # ===========================================================
-        - id: equipment-equipos
+        - id: equipment-asignaciones
           uri: ${EQUIPMENT_SERVICE_URL:http://localhost:8086}
           predicates:
-            - Path=/api/equipos/**
+            - Path=/api/asignaciones/**
           filters:
             - StripPrefix=1
+          # POST /api/asignaciones → Asignar kit a vendedor
+          # GET  /api/asignaciones → Listar todas (admin)
+          # GET  /api/asignaciones/me → Mis asignaciones
+          # GET  /api/asignaciones/me/activa → Mi asignación activa
+          # GET  /api/asignaciones/me/bloqueado → ¿Estoy bloqueado?
+          # POST /api/asignaciones/{id}/devolver → Devolver kit
+          # POST /api/asignaciones/{id}/cancelar → Cancelar por pérdida/daño
 
         - id: equipment-mensualidades
           uri: ${EQUIPMENT_SERVICE_URL:http://localhost:8086}
@@ -147,6 +156,20 @@ spring:
             - Path=/api/mensualidades/**
           filters:
             - StripPrefix=1
+          # GET  /api/mensualidades/me/pendientes → Mis pagos pendientes
+          # GET  /api/mensualidades/me/vencidos → Mis pagos vencidos
+          # POST /api/mensualidades/{id}/pagar → Registrar pago (admin)
+          # POST /api/mensualidades/generar → Generar mensualidades (admin)
+
+        - id: equipment-stock
+          uri: ${EQUIPMENT_SERVICE_URL:http://localhost:8086}
+          predicates:
+            - Path=/api/stock/**
+          filters:
+            - StripPrefix=1
+          # GET  /api/stock → Ver stock de kits (admin)
+          # GET  /api/stock/disponibles → Cantidad disponible
+          # POST /api/stock/agregar → Agregar kits nuevos (admin)
 
         # ===========================================================
         # DOCUMENT SERVICE (Puerto 8087)
@@ -169,10 +192,16 @@ spring:
             - Path=/api/notificaciones/**
           filters:
             - StripPrefix=1
+          # GET  /api/notificaciones/me → Mis notificaciones
+          # GET  /api/notificaciones/me/contador → Contador no leídas
+          # POST /api/notificaciones/me/marcar-todas-leidas → Marcar todas
+          # POST /api/notificaciones → Crear notificación (admin)
+          # POST /api/notificaciones/broadcast → Broadcast a todos (admin)
 
         # ===========================================================
         # BACKUP SERVICE (Puerto 8089)
         # Controlador: @RequestMapping("/backups")
+        # Solo ADMIN
         # ===========================================================
         - id: backup-service
           uri: ${BACKUP_SERVICE_URL:http://localhost:8089}
@@ -180,6 +209,10 @@ spring:
             - Path=/api/backups/**
           filters:
             - StripPrefix=1
+          # POST /api/backups → Crear backup
+          # GET  /api/backups → Listar todos
+          # GET  /api/backups/{id}/descargar → Descargar .zip
+          # GET  /api/backups/resumen → Estadísticas
 
 # Actuator
 management:
@@ -190,6 +223,8 @@ management:
   endpoint:
     gateway:
       enabled: true
+    health:
+      show-details: when-authorized
 
 # Logging
 logging:

@@ -27,7 +27,7 @@ public class NotificacionController {
 
     private final NotificacionService service;
 
-    // === Operaciones Admin ===
+    // ==================== ADMIN: Crear notificaciones ====================
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -42,6 +42,8 @@ public class NotificacionController {
             @Valid @RequestBody NotificacionDTO.BroadcastRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.crearBroadcast(request));
     }
+
+    // ==================== ADMIN: Eliminar ====================
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -62,7 +64,7 @@ public class NotificacionController {
         ));
     }
 
-    // === Consultas Admin ===
+    // ==================== ADMIN: Consultas ====================
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -98,7 +100,7 @@ public class NotificacionController {
         return ResponseEntity.ok(service.obtenerResumenTipos());
     }
 
-    // === Mis notificaciones (usuario autenticado) ===
+    // ==================== Mis notificaciones (usuario autenticado) ====================
 
     @GetMapping("/me")
     public ResponseEntity<NotificacionDTO.ListResponse> misNotificaciones(
@@ -162,7 +164,7 @@ public class NotificacionController {
         ));
     }
 
-    // === Obtener por ID ===
+    // ==================== Obtener por ID ====================
 
     @GetMapping("/{id}")
     public ResponseEntity<NotificacionDTO.Response> obtener(@PathVariable Long id) {

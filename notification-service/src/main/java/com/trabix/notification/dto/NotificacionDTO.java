@@ -1,5 +1,6 @@
 package com.trabix.notification.dto;
 
+import com.trabix.notification.entity.TipoNotificacion;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
@@ -19,7 +20,9 @@ public class NotificacionDTO {
         private Long id;
         private Long usuarioId;
         private String usuarioNombre;
-        private String tipo;
+        private TipoNotificacion tipo;
+        private String tipoNombre;
+        private String tipoIcono;
         private String titulo;
         private String mensaje;
         private Boolean leida;
@@ -38,9 +41,7 @@ public class NotificacionDTO {
         
         private Long usuarioId;
         
-        @Pattern(regexp = "INFO|ALERTA|RECORDATORIO|SISTEMA|EXITO|ERROR", 
-                 message = "Tipo inválido. Use: INFO, ALERTA, RECORDATORIO, SISTEMA, EXITO o ERROR")
-        private String tipo;
+        private TipoNotificacion tipo;
         
         @NotBlank(message = "El título es requerido")
         @Size(max = 100, message = "El título no puede exceder 100 caracteres")
@@ -50,6 +51,7 @@ public class NotificacionDTO {
         @Size(max = 2000, message = "El mensaje no puede exceder 2000 caracteres")
         private String mensaje;
         
+        @Size(max = 50, message = "El tipo de referencia no puede exceder 50 caracteres")
         private String referenciaTipo;
         
         private Long referenciaId;
@@ -61,9 +63,7 @@ public class NotificacionDTO {
     @AllArgsConstructor
     public static class BroadcastRequest {
         
-        @Pattern(regexp = "INFO|ALERTA|RECORDATORIO|SISTEMA|EXITO|ERROR", 
-                 message = "Tipo inválido")
-        private String tipo;
+        private TipoNotificacion tipo;
         
         @NotBlank(message = "El título es requerido")
         @Size(max = 100, message = "El título no puede exceder 100 caracteres")
@@ -117,5 +117,6 @@ public class NotificacionDTO {
         private long sistema;
         private long exito;
         private long error;
+        private long total;
     }
 }

@@ -4,11 +4,12 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * Entidad Usuario simplificada para relaciones en notification-service.
+ * Entidad Usuario simplificada para notification-service.
+ * Solo lectura.
  */
 @Entity
 @Table(name = "usuarios")
-@Data
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 public class Usuario {
@@ -17,21 +18,23 @@ public class Usuario {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 20)
     private String cedula;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String nombre;
 
-    @Column(nullable = false)
-    private String telefono;
-
-    @Column(nullable = false)
-    private String nivel;
-
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private String rol;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private String estado;
+
+    public boolean esAdmin() {
+        return "ADMIN".equals(rol);
+    }
+
+    public boolean estaActivo() {
+        return "ACTIVO".equals(estado);
+    }
 }
