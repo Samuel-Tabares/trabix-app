@@ -1,6 +1,7 @@
 package com.trabix.finance.controller;
 
 import com.trabix.finance.dto.CostoProduccionDTO;
+import com.trabix.finance.entity.TipoCosto;
 import com.trabix.finance.service.CostoProduccionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,8 +19,9 @@ import java.util.List;
 
 /**
  * Controlador para costos de producción.
- * Solo admin puede acceder.
- * Tipos: PRODUCCION, INSUMO, MARKETING, OTRO
+ * Solo ADMIN puede acceder.
+ * 
+ * Tipos válidos: PRODUCCION, INSUMO, MARKETING, OPERATIVO, ENVIO, OTRO
  */
 @RestController
 @RequestMapping("/costos/produccion")
@@ -63,11 +65,11 @@ public class CostoProduccionController {
 
     @GetMapping("/tipo/{tipo}")
     public ResponseEntity<CostoProduccionDTO.ListResponse> listarPorTipo(
-            @PathVariable String tipo,
+            @PathVariable TipoCosto tipo,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamano) {
         Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("fecha").descending());
-        return ResponseEntity.ok(service.listarPorTipo(tipo.toUpperCase(), pageable));
+        return ResponseEntity.ok(service.listarPorTipo(tipo, pageable));
     }
 
     @GetMapping("/periodo")
@@ -100,5 +102,10 @@ public class CostoProduccionController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta) {
         return ResponseEntity.ok(service.obtenerResumenPeriodo(desde, hasta));
+    }
+
+    @GetMapping("/proveedores")
+    public ResponseEntity<List<String>> listarProveedores() {
+        return ResponseEntity.ok(service.listarProveedores());
     }
 }

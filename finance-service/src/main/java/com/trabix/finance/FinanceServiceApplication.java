@@ -9,8 +9,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 
  * Funcionalidades:
  * - Configuración de costos (real vs percibido)
- * - Fondo de recompensas ($200 por TRABIX)
+ * - Fondo de recompensas (se alimenta cuando VENDEDORES pagan lotes)
  * - Registro de costos de producción
+ * 
+ * IMPORTANTE:
+ * - El fondo solo se alimenta con pagos de VENDEDORES, nunca del ADMIN/dueño
+ * - $200 por TRABIX van al fondo (configurable)
+ * - Todo se gestiona manualmente por el ADMIN
  */
 @SpringBootApplication(scanBasePackages = {"com.trabix.finance", "com.trabix.common"})
 public class FinanceServiceApplication {

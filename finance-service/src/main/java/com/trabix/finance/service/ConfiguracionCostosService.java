@@ -15,6 +15,9 @@ import java.math.BigDecimal;
 
 /**
  * Servicio para gestión de configuración de costos.
+ * 
+ * El costo real y percibido se digitan manualmente por el ADMIN.
+ * El aporte al fondo también es configurable.
  */
 @Slf4j
 @Service
@@ -27,7 +30,6 @@ public class ConfiguracionCostosService {
     private static final BigDecimal COSTO_REAL_DEFAULT = new BigDecimal("2000");
     private static final BigDecimal COSTO_PERCIBIDO_DEFAULT = new BigDecimal("2400");
     private static final BigDecimal APORTE_FONDO_DEFAULT = new BigDecimal("200");
-    private static final BigDecimal APORTE_GESTION_DEFAULT = new BigDecimal("200");
 
     /**
      * Inicializa configuración por defecto si no existe.
@@ -40,30 +42,30 @@ public class ConfiguracionCostosService {
                     .costoRealTrabix(COSTO_REAL_DEFAULT)
                     .costoPercibidoTrabix(COSTO_PERCIBIDO_DEFAULT)
                     .aporteFondoPorTrabix(APORTE_FONDO_DEFAULT)
-                    .aporteGestionPorTrabix(APORTE_GESTION_DEFAULT)
                     .build();
             repository.save(config);
-            log.info("Configuración de costos inicializada con valores por defecto");
+            log.info("Configuración de costos inicializada: costo_real=${}, costo_percibido=${}, aporte_fondo=${}",
+                    COSTO_REAL_DEFAULT, COSTO_PERCIBIDO_DEFAULT, APORTE_FONDO_DEFAULT);
         }
     }
 
     /**
      * Obtiene la configuración actual (solo admin).
+     * Muestra todos los valores incluyendo costo real.
      */
     @Transactional(readOnly = true)
     public ConfiguracionCostosDTO.Response obtenerConfiguracion() {
-        ConfiguracionCostos config = repository.findFirstByOrderByIdDesc()
-                .orElseThrow(() -> new RecursoNoEncontradoException("Configuración de costos no encontrada"));
+        ConfiguracionCostos config = obtenerConfiguracionActual();
         return mapToResponse(config);
     }
 
     /**
      * Vista para vendedores (solo costo percibido).
+     * NO muestra el costo real.
      */
     @Transactional(readOnly = true)
     public ConfiguracionCostosDTO.VendedorView obtenerVistaVendedor() {
-        ConfiguracionCostos config = repository.findFirstByOrderByIdDesc()
-                .orElseThrow(() -> new RecursoNoEncontradoException("Configuración de costos no encontrada"));
+        ConfiguracionCostos config = obtenerConfiguracionActual();
         
         return ConfiguracionCostosDTO.VendedorView.builder()
                 .costoPorTrabix(config.getCostoPercibidoTrabix())
@@ -73,37 +75,61 @@ public class ConfiguracionCostosService {
 
     /**
      * Actualiza la configuración de costos (solo admin).
+     * Validaciones:
+     * - Costo real > 0
+     * - Costo percibido > 0
+     * - Aporte fondo >= 0
      */
     @Transactional
     public ConfiguracionCostosDTO.Response actualizar(ConfiguracionCostosDTO.UpdateRequest request) {
-        ConfiguracionCostos config = repository.findFirstByOrderByIdDesc()
-                .orElseThrow(() -> new RecursoNoEncontradoException("Configuración de costos no encontrada"));
+        // Usar bloqueo pesimista para evitar actualizaciones concurrentes
+        ConfiguracionCostos config = repository.findFirstForUpdate()
+                .orElseThrow(() -> new RecursoNoEncontradoException("ConfiguracionCostos", "default"));
 
-        if (request.getCostoPercibidoTrabix().compareTo(request.getCostoRealTrabix()) < 0) {
-            throw new ValidacionNegocioException("El costo percibido no puede ser menor al costo real");
+        // Validaciones de negocio
+        if (request.getCostoRealTrabix().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidacionNegocioException("El costo real debe ser mayor a 0");
+        }
+        
+        if (request.getCostoPercibidoTrabix().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidacionNegocioException("El costo percibido debe ser mayor a 0");
+        }
+        
+        if (request.getAporteFondoPorTrabix().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidacionNegocioException("El aporte al fondo no puede ser negativo");
         }
 
+        // Actualizar valores
         config.setCostoRealTrabix(request.getCostoRealTrabix());
         config.setCostoPercibidoTrabix(request.getCostoPercibidoTrabix());
         config.setAporteFondoPorTrabix(request.getAporteFondoPorTrabix());
-        config.setAporteGestionPorTrabix(request.getAporteGestionPorTrabix());
 
         ConfiguracionCostos saved = repository.save(config);
-        log.info("Configuración de costos actualizada: costo_real={}, costo_percibido={}, aporte_fondo={}, aporte_gestion={}",
-                saved.getCostoRealTrabix(), saved.getCostoPercibidoTrabix(),
-                saved.getAporteFondoPorTrabix(), saved.getAporteGestionPorTrabix());
+        
+        log.info("Configuración de costos actualizada: costo_real=${}, costo_percibido=${}, aporte_fondo={}",
+                saved.getCostoRealTrabix(), saved.getCostoPercibidoTrabix(), saved.getAporteFondoPorTrabix());
 
         return mapToResponse(saved);
     }
 
     /**
      * Obtiene el costo percibido actual.
+     * Usado por otros servicios para calcular costos de lotes.
      */
     @Transactional(readOnly = true)
     public BigDecimal obtenerCostoPercibido() {
-        return repository.findFirstByOrderByIdDesc()
-                .map(ConfiguracionCostos::getCostoPercibidoTrabix)
+        return repository.obtenerCostoPercibido()
                 .orElse(COSTO_PERCIBIDO_DEFAULT);
+    }
+
+    /**
+     * Obtiene el aporte al fondo por TRABIX.
+     * Usado para calcular cuánto va al fondo cuando un vendedor paga un lote.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal obtenerAporteFondo() {
+        return repository.obtenerAporteFondo()
+                .orElse(APORTE_FONDO_DEFAULT);
     }
 
     /**
@@ -111,9 +137,28 @@ public class ConfiguracionCostosService {
      */
     @Transactional(readOnly = true)
     public BigDecimal calcularAporteFondo(int cantidadTrabix) {
-        ConfiguracionCostos config = repository.findFirstByOrderByIdDesc()
-                .orElseThrow(() -> new RecursoNoEncontradoException("Configuración de costos no encontrada"));
+        if (cantidadTrabix <= 0) {
+            return BigDecimal.ZERO;
+        }
+        ConfiguracionCostos config = obtenerConfiguracionActual();
         return config.calcularAporteFondoPorLote(cantidadTrabix);
+    }
+
+    /**
+     * Calcula costo total de un lote según costo percibido.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal calcularCostoLote(int cantidadTrabix) {
+        if (cantidadTrabix <= 0) {
+            return BigDecimal.ZERO;
+        }
+        ConfiguracionCostos config = obtenerConfiguracionActual();
+        return config.calcularCostoLote(cantidadTrabix);
+    }
+
+    private ConfiguracionCostos obtenerConfiguracionActual() {
+        return repository.findFirstByOrderByIdAsc()
+                .orElseThrow(() -> new RecursoNoEncontradoException("ConfiguracionCostos", "default"));
     }
 
     private ConfiguracionCostosDTO.Response mapToResponse(ConfiguracionCostos config) {
@@ -122,9 +167,7 @@ public class ConfiguracionCostosService {
                 .costoRealTrabix(config.getCostoRealTrabix())
                 .costoPercibidoTrabix(config.getCostoPercibidoTrabix())
                 .aporteFondoPorTrabix(config.getAporteFondoPorTrabix())
-                .aporteGestionPorTrabix(config.getAporteGestionPorTrabix())
                 .diferenciaCosto(config.getDiferenciaCosto())
-                .margenTotalPorTrabix(config.getMargenTotalPorTrabix())
                 .fechaActualizacion(config.getFechaActualizacion())
                 .build();
     }

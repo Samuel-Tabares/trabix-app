@@ -39,6 +39,7 @@ public class ResumenCuadresResponse {
         private String vendedorNombre;
         private String vendedorTelefono;
         private Integer tandaNumero;
+        private Integer totalTandas;
         private String tipoCuadre;
         private BigDecimal montoEsperado;
         private Double porcentajeStock;

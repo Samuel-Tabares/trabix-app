@@ -10,7 +10,10 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * Controlador para configuración de costos.
- * Solo admin puede ver costos reales y modificar.
+ * 
+ * GET /costos/configuracion - Solo ADMIN, muestra todo incluyendo costo real
+ * GET /costos/configuracion/vendedor - Autenticados, solo muestra costo percibido
+ * PUT /costos/configuracion - Solo ADMIN, actualiza configuración
  */
 @RestController
 @RequestMapping("/costos/configuracion")
@@ -19,17 +22,28 @@ public class ConfiguracionCostosController {
 
     private final ConfiguracionCostosService service;
 
+    /**
+     * Obtiene la configuración completa (solo ADMIN).
+     * Incluye costo real, percibido, aporte fondo y diferencia.
+     */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ConfiguracionCostosDTO.Response> obtener() {
         return ResponseEntity.ok(service.obtenerConfiguracion());
     }
 
+    /**
+     * Obtiene vista para vendedores.
+     * Solo muestra el costo percibido (lo que pagan por TRABIX).
+     */
     @GetMapping("/vendedor")
     public ResponseEntity<ConfiguracionCostosDTO.VendedorView> obtenerVistaVendedor() {
         return ResponseEntity.ok(service.obtenerVistaVendedor());
     }
 
+    /**
+     * Actualiza la configuración de costos (solo ADMIN).
+     */
     @PutMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ConfiguracionCostosDTO.Response> actualizar(

@@ -1,5 +1,6 @@
 package com.trabix.finance.dto;
 
+import com.trabix.finance.entity.TipoCosto;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
@@ -22,7 +23,8 @@ public class CostoProduccionDTO {
         private Integer cantidad;
         private BigDecimal costoUnitario;
         private BigDecimal costoTotal;
-        private String tipo;
+        private TipoCosto tipo;
+        private String tipoDescripcion;
         private LocalDateTime fecha;
         private String nota;
         private String proveedor;
@@ -48,10 +50,8 @@ public class CostoProduccionDTO {
         @DecimalMin(value = "0.01", message = "El costo unitario debe ser mayor a 0")
         private BigDecimal costoUnitario;
         
-        @NotBlank(message = "El tipo es requerido")
-        @Pattern(regexp = "PRODUCCION|INSUMO|MARKETING|OTRO", 
-                 message = "Tipo inválido. Use: PRODUCCION, INSUMO, MARKETING o OTRO")
-        private String tipo;
+        @NotNull(message = "El tipo es requerido")
+        private TipoCosto tipo;
         
         private LocalDateTime fecha;
         
@@ -80,9 +80,7 @@ public class CostoProduccionDTO {
         @DecimalMin(value = "0.01", message = "El costo unitario debe ser mayor a 0")
         private BigDecimal costoUnitario;
         
-        @Pattern(regexp = "PRODUCCION|INSUMO|MARKETING|OTRO", 
-                 message = "Tipo inválido. Use: PRODUCCION, INSUMO, MARKETING o OTRO")
-        private String tipo;
+        private TipoCosto tipo;
         
         @Size(max = 500, message = "La nota no puede exceder 500 caracteres")
         private String nota;
@@ -112,7 +110,8 @@ public class CostoProduccionDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ResumenTipo {
-        private String tipo;
+        private TipoCosto tipo;
+        private String tipoDescripcion;
         private Long cantidad;
         private BigDecimal total;
         private BigDecimal porcentaje;

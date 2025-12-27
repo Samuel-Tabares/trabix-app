@@ -36,7 +36,7 @@ public class CuadreScheduler {
     @Scheduled(fixedRate = 300000)
     @Transactional(readOnly = true)
     public void verificarTandasParaCuadre() {
-        List<Tanda> tandas = tandaRepository.findTandasParaCuadre(triggerCuadrePorcentaje);
+        List<Tanda> tandas = tandaRepository.findTandasParaCuadrePorStock();
 
         for (Tanda tanda : tandas) {
             if (cuadreRepository.existsByTandaIdAndEstado(tanda.getId(), "PENDIENTE")) {

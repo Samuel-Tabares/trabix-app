@@ -66,6 +66,7 @@ public class CuadreResponse {
         private Integer cantidadTotal;
         private String modelo;
         private BigDecimal inversionTotal;
+        private Integer numeroTandas;
     }
     
     @Data

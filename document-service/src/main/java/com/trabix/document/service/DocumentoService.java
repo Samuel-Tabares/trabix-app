@@ -8,7 +8,6 @@ import com.trabix.common.exception.ValidacionNegocioException;
 import com.trabix.document.dto.DocumentoDTO;
 import com.trabix.document.entity.Documento;
 import com.trabix.document.entity.Usuario;
-import com.trabix.document.entity.ItemDocumento;
 import com.trabix.document.repository.DocumentoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,7 +77,7 @@ public class DocumentoService {
                 .clienteDireccion(request.getClienteDireccion())
                 .clienteNit(request.getClienteNit())
                 .clienteCorreo(request.getClienteCorreo())
-                .items(mapItemsFromDto(items))
+                .items(serializarItems(items))
                 .subtotal(subtotal)
                 .iva(iva)
                 .total(total)
@@ -133,8 +132,8 @@ public class DocumentoService {
                 iva = subtotal.multiply(BigDecimal.valueOf(ivaPorcentaje))
                         .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             }
-
-            documento.setItems(mapItemsFromDto(items));
+            
+            documento.setItems(serializarItems(items));
             documento.setSubtotal(subtotal);
             documento.setIva(iva);
             documento.setTotal(subtotal.add(iva));
@@ -251,7 +250,7 @@ public class DocumentoService {
     @Transactional(readOnly = true)
     public DocumentoDTO.Response obtenerPorNumero(String numero) {
         Documento documento = repository.findByNumero(numero)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Documento con número: " + numero));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Documento", numero));
         return mapToResponse(documento);
     }
 
@@ -338,6 +337,23 @@ public class DocumentoService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private String serializarItems(List<DocumentoDTO.ItemDocumento> items) {
+        try {
+            return objectMapper.writeValueAsString(items);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Error al serializar items", e);
+        }
+    }
+
+    private List<DocumentoDTO.ItemDocumento> deserializarItems(String json) {
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<DocumentoDTO.ItemDocumento>>() {});
+        } catch (JsonProcessingException e) {
+            log.error("Error al deserializar items: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
     private DocumentoDTO.ListResponse buildListResponse(Page<Documento> page) {
         List<DocumentoDTO.Response> documentos = page.getContent().stream()
                 .map(this::mapToResponse)
@@ -364,16 +380,7 @@ public class DocumentoService {
                 .clienteDireccion(doc.getClienteDireccion())
                 .clienteNit(doc.getClienteNit())
                 .clienteCorreo(doc.getClienteCorreo())
-                .items(
-                        doc.getItems().stream()
-                                .map(i -> DocumentoDTO.ItemDocumento.builder()
-                                        .descripcion(i.getDescripcion())
-                                        .cantidad(i.getCantidad())
-                                        .precioUnitario(i.getPrecioUnitario())
-                                        .subtotal(i.getSubtotal())
-                                        .build())
-                                .toList()
-                )
+                .items(deserializarItems(doc.getItems()))
                 .subtotal(doc.getSubtotal())
                 .iva(doc.getIva())
                 .total(doc.getTotal())
@@ -385,15 +392,4 @@ public class DocumentoService {
                 .createdAt(doc.getCreatedAt())
                 .build();
     }
-    private List<ItemDocumento> mapItemsFromDto(List<DocumentoDTO.ItemDocumento> dtoItems) {
-        return dtoItems.stream()
-                .map(i -> ItemDocumento.builder()
-                        .descripcion(i.getDescripcion())
-                        .cantidad(i.getCantidad())
-                        .precioUnitario(i.getPrecioUnitario())
-                        .subtotal(i.getSubtotal())
-                        .build())
-                .toList();
-    }
-
 }

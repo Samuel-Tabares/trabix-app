@@ -7,6 +7,17 @@ import java.time.LocalDateTime;
 
 /**
  * Entidad Tanda para billing-service.
+ * 
+ * TRIGGERS DE CUADRE (según número de tandas):
+ * 
+ * 2 TANDAS (< 50 TRABIX):
+ * - T1: Cuadre cuando recaudado >= inversión Samuel
+ * - T2: 20% stock = trigger cuadre
+ * 
+ * 3 TANDAS (>= 50 TRABIX):
+ * - T1: Cuadre cuando recaudado >= inversión Samuel (20% = solo alerta)
+ * - T2: 10% stock = trigger cuadre
+ * - T3: 20% stock = trigger cuadre, mini-cuadre cuando stock = 0
  */
 @Entity
 @Table(name = "tandas")
@@ -42,6 +53,11 @@ public class Tanda {
     @Column(nullable = false, length = 20)
     private String estado;
 
+    // === Umbrales de trigger ===
+    private static final int TANDA1_ALERTA_PORCENTAJE = 20;
+    private static final int TANDA2_INTERMEDIA_CUADRE = 10;
+    private static final int TANDA_FINAL_CUADRE = 20;
+
     /**
      * Calcula el porcentaje de stock restante.
      */
@@ -51,10 +67,65 @@ public class Tanda {
     }
 
     /**
-     * Verifica si la tanda requiere cuadre (stock <= 20%).
+     * Obtiene el número total de tandas del lote.
      */
-    public boolean requiereCuadre(int porcentajeTrigger) {
-        return "LIBERADA".equals(estado) && getPorcentajeStockRestante() <= porcentajeTrigger;
+    public int getTotalTandas() {
+        return lote != null ? lote.getNumeroTandas() : 3;
+    }
+
+    /**
+     * Verifica si es la última tanda del lote.
+     */
+    public boolean esUltimaTanda() {
+        return numero == getTotalTandas();
+    }
+
+    /**
+     * Verifica si es tanda intermedia (solo aplica con 3 tandas).
+     */
+    public boolean esTandaIntermedia() {
+        return getTotalTandas() == 3 && numero == 2;
+    }
+
+    /**
+     * Verifica si la tanda requiere cuadre por porcentaje de stock.
+     * 
+     * NOTA: Tanda 1 NO usa este método - su cuadre es por monto recaudado.
+     */
+    public boolean requiereCuadrePorStock() {
+        if (!"LIBERADA".equals(estado)) return false;
+        
+        double porcentaje = getPorcentajeStockRestante();
+        int totalTandas = getTotalTandas();
+
+        if (numero == 1) {
+            // Tanda 1: NO se cuadra por porcentaje, solo por monto recaudado
+            // Este método retorna false, el cuadre se valida por monto
+            return false;
+        }
+
+        if (totalTandas == 2) {
+            // 2 tandas: T2 es la final
+            return porcentaje <= TANDA_FINAL_CUADRE;
+        } else {
+            // 3 tandas
+            if (numero == 2) {
+                // T2 intermedia: trigger al 10%
+                return porcentaje <= TANDA2_INTERMEDIA_CUADRE;
+            } else {
+                // T3 final: trigger al 20%
+                return porcentaje <= TANDA_FINAL_CUADRE;
+            }
+        }
+    }
+
+    /**
+     * Verifica si T1 está en nivel de alerta (20% stock).
+     * Solo informativo, cuadre real es por monto.
+     */
+    public boolean tanda1EnAlerta() {
+        return numero == 1 && "LIBERADA".equals(estado) 
+            && getPorcentajeStockRestante() <= TANDA1_ALERTA_PORCENTAJE;
     }
 
     /**
@@ -65,7 +136,7 @@ public class Tanda {
     }
 
     /**
-     * Verifica si es tanda de ganancias (2 o 3).
+     * Verifica si es tanda de ganancias (2+).
      */
     public boolean esTandaGanancias() {
         return numero > 1;
@@ -76,5 +147,36 @@ public class Tanda {
      */
     public int getUnidadesVendidas() {
         return stockEntregado - stockActual;
+    }
+
+    /**
+     * Obtiene descripción de la tanda según su número y total de tandas.
+     */
+    public String getDescripcion() {
+        int total = getTotalTandas();
+        
+        if (total == 2) {
+            return switch (numero) {
+                case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
+                case 2 -> "Tanda 2 (Recuperar inversión vendedor + Ganancias)";
+                default -> "Tanda " + numero;
+            };
+        } else {
+            return switch (numero) {
+                case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
+                case 2 -> "Tanda 2 (Recuperar inversión vendedor)";
+                case 3 -> "Tanda 3 (Ganancias puras)";
+                default -> "Tanda " + numero;
+            };
+        }
+    }
+
+    /**
+     * Obtiene el porcentaje de trigger para esta tanda.
+     */
+    public int getPorcentajeTrigger() {
+        if (numero == 1) return TANDA1_ALERTA_PORCENTAJE; // Solo alerta
+        if (esTandaIntermedia()) return TANDA2_INTERMEDIA_CUADRE;
+        return TANDA_FINAL_CUADRE;
     }
 }

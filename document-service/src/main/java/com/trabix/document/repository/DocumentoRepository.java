@@ -93,7 +93,7 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     @Query("""
         SELECT MAX(d.id) FROM Documento d 
         WHERE d.tipo = :tipo 
-        AND YEAR(d.fechaEmision) = :anio
+        AND EXTRACT(YEAR FROM d.fechaEmision) = :anio
         """)
     Optional<Long> findMaxIdByTipoYAnio(@Param("tipo") String tipo, @Param("anio") int anio);
     

@@ -8,17 +8,23 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
-
 /**
  * Request para registrar una nueva venta.
  * 
  * Tipos disponibles:
  * - UNIDAD: $8,000 (con licor)
- * - PROMO: $6,000 c/u (2x$12,000, requiere cantidad par)
+ * - PROMO: $12,000 total (2 unidades x $6,000 c/u)
  * - SIN_LICOR: $7,000
- * - REGALO: $0 (máximo 8% del stock)
- * - MAYOR: Precio variable según cantidad
+ * - REGALO: $0 (máximo 8% del stock del lote)
+ * - MAYOR_CON_LICOR: >20 unidades, precio escalado automático
+ * - MAYOR_SIN_LICOR: >20 unidades, precio escalado automático
+ * 
+ * PRECIOS AL MAYOR (automáticos):
+ * | Cantidad | Con Licor | Sin Licor |
+ * |----------|-----------|-----------|
+ * | 21-49    | $4,900    | $4,800    |
+ * | 50-99    | $4,700    | $4,500    |
+ * | 100+     | $4,500    | $4,200    |
  */
 @Data
 @Builder
@@ -34,19 +40,13 @@ public class RegistrarVentaRequest {
     private Integer cantidad;
 
     /**
-     * Precio unitario para ventas al por MAYOR.
-     * Solo se usa cuando tipo = MAYOR.
-     */
-    private BigDecimal precioUnitarioMayor;
-
-    /**
-     * Nota opcional (útil para regalos/degustaciones).
+     * Nota opcional (útil para regalos/degustaciones o detalles del cliente).
      */
     private String nota;
 
     /**
      * ID de la tanda específica (opcional).
-     * Si no se proporciona, se usa la tanda activa del usuario.
+     * Si no se proporciona, se usa la tanda activa del usuario (FIFO).
      */
     private Long tandaId;
 }

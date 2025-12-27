@@ -39,20 +39,23 @@ public class SecurityConfig {
                 // Endpoints públicos
                 .requestMatchers(
                     "/actuator/health",
+                    "/actuator/info",
                     "/error"
                 ).permitAll()
                 
-                // === Configuración de Costos - Solo ADMIN ===
-                .requestMatchers("/costos/configuracion").hasRole("ADMIN")
+                // === Configuración de Costos ===
+                .requestMatchers(HttpMethod.GET, "/costos/configuracion").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/costos/configuracion").hasRole("ADMIN")
-                .requestMatchers("/costos/configuracion/vendedor").authenticated()
+                .requestMatchers(HttpMethod.GET, "/costos/configuracion/vendedor").authenticated()
                 
                 // === Costos de Producción - Solo ADMIN ===
                 .requestMatchers("/costos/produccion/**").hasRole("ADMIN")
                 
                 // === Fondo de Recompensas ===
-                .requestMatchers(HttpMethod.POST, "/fondo/**").hasRole("ADMIN")
+                // Consultas: autenticados
                 .requestMatchers(HttpMethod.GET, "/fondo/**").authenticated()
+                // Operaciones: solo ADMIN
+                .requestMatchers(HttpMethod.POST, "/fondo/**").hasRole("ADMIN")
                 
                 // Resto requiere autenticación
                 .anyRequest().authenticated()

@@ -18,7 +18,13 @@ import java.util.List;
 
 /**
  * Controlador para el Fondo de Recompensas.
- * El fondo se alimenta con $200 por cada TRABIX vendido.
+ * 
+ * El fondo se alimenta SOLO cuando VENDEDORES pagan lotes.
+ * El dinero del ADMIN/dueño NUNCA va al fondo.
+ * $200 por TRABIX (configurable).
+ * 
+ * Consultas: todos los autenticados
+ * Operaciones (ingresar, retirar, premiar): solo ADMIN
  */
 @RestController
 @RequestMapping("/fondo")
@@ -27,7 +33,7 @@ public class FondoRecompensasController {
 
     private final FondoRecompensasService service;
 
-    // === Consultas (todos los autenticados) ===
+    // ==================== CONSULTAS (todos los autenticados) ====================
 
     @GetMapping("/saldo")
     public ResponseEntity<FondoRecompensasDTO.SaldoResponse> obtenerSaldo() {
@@ -60,8 +66,21 @@ public class FondoRecompensasController {
         return ResponseEntity.ok(service.obtenerPremiosBeneficiario(usuarioId));
     }
 
-    // === Operaciones (solo admin) ===
+    @GetMapping("/aportes/{vendedorId}")
+    public ResponseEntity<MovimientoFondoDTO.ResumenVendedor> obtenerAportesVendedor(
+            @PathVariable Long vendedorId) {
+        return ResponseEntity.ok(service.obtenerAportesVendedor(vendedorId));
+    }
 
+    // ==================== OPERACIONES (solo ADMIN) ====================
+
+    /**
+     * Registra un ingreso al fondo.
+     * Se usa cuando un VENDEDOR paga un lote.
+     * 
+     * Si se proporciona vendedorId, se valida que sea vendedor (no admin).
+     * El dinero del ADMIN nunca va al fondo.
+     */
     @PostMapping("/ingresar")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<MovimientoFondoDTO.Response> ingresar(
@@ -69,6 +88,9 @@ public class FondoRecompensasController {
         return ResponseEntity.ok(service.ingresar(request));
     }
 
+    /**
+     * Retira dinero del fondo (sin beneficiario específico).
+     */
     @PostMapping("/retirar")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<MovimientoFondoDTO.Response> retirar(
@@ -76,6 +98,9 @@ public class FondoRecompensasController {
         return ResponseEntity.ok(service.retirar(request));
     }
 
+    /**
+     * Entrega un premio a un beneficiario.
+     */
     @PostMapping("/premiar")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<MovimientoFondoDTO.Response> premiar(

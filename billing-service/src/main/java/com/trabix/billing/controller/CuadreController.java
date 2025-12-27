@@ -80,6 +80,12 @@ public class CuadreController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    @GetMapping("/alertas")
+    public ResponseEntity<ApiResponse<List<CuadreResponse>>> obtenerAlertas() {
+        List<CuadreResponse> response = cuadreService.detectarAlertas();
+        return ResponseEntity.ok(ApiResponse.ok(response, "Alertas de Tanda 1 con stock bajo pero sin recaudado suficiente"));
+    }
+
     // === Endpoints de consulta ===
 
     @GetMapping("/{id}")

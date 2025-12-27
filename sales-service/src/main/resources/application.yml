@@ -24,15 +24,19 @@ spring:
 jwt:
   secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits}
 
-# Configuración de precios de venta
-trabix:
-  precios:
-    unidad: 8000       # Con licor
-    promo: 6000        # 2x1 ($12,000 / 2)
-    sin-licor: 7000    # Sin licor
-    regalo: 0          # Degustación/cortesía
-  # Límite de regalos por tanda (porcentaje del stock)
-  limite-regalos-porcentaje: 8
+# PRECIOS DE VENTA (hardcodeados en VentaService):
+# - UNIDAD: $8,000 (con licor)
+# - PROMO: $12,000 total (2 x $6,000)
+# - SIN_LICOR: $7,000
+# - REGALO: $0 (máx 8% del lote)
+# - MAYOR_CON_LICOR:
+#   - 21-49: $4,900
+#   - 50-99: $4,700
+#   - 100+:  $4,500
+# - MAYOR_SIN_LICOR:
+#   - 21-49: $4,800
+#   - 50-99: $4,500
+#   - 100+:  $4,200
 
 # OpenAPI
 springdoc:

@@ -30,15 +30,15 @@ import java.util.stream.Collectors;
  * Servicio para gestión de inventario: lotes, tandas y stock.
  * 
  * LÓGICA DE NEGOCIO:
- * - < 50 TRABIX = 2 tandas (50% / 50%)
- * - >= 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
+ * - <= 50 TRABIX = 2 tandas (50% / 50%)
+ * - > 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
  * - Múltiples lotes activos permitidos
  * - Ventas FIFO (lote más antiguo primero)
  * 
  * TRIGGERS DE CUADRE:
  * - Tanda 1: 20% = solo alerta, cuadre cuando se recupera inversión Samuel
- * - Tanda 2: 10% = trigger cuadre, notificación cuando recupera inversión vendedor
- * - Tanda 3: 20% = trigger cuadre, mini-cuadre al final cuando stock = 0
+ * - Tanda 2 (en 3 tandas): 10% = trigger cuadre
+ * - Tanda 2 (en 2 tandas) / Tanda 3: 20% = trigger cuadre, mini-cuadre al 0%
  */
 @Slf4j
 @Service
@@ -115,13 +115,13 @@ public class InventarioService {
 
     /**
      * Crea 2 o 3 tandas según la cantidad del lote.
-     * < 50 TRABIX = 2 tandas (50% / 50%)
-     * >= 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
+     * <= 50 TRABIX = 2 tandas (50% / 50%)
+     * > 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
      */
     private void crearTandasDinamicas(Lote lote, int cantidadTotal) {
         List<Integer> cantidades;
 
-        if (cantidadTotal < UMBRAL_TRES_TANDAS) {
+        if (cantidadTotal <= UMBRAL_TRES_TANDAS) {
             // 2 tandas: 50% / 50%
             int cantidad1 = cantidadTotal / 2;
             int cantidad2 = cantidadTotal - cantidad1;

@@ -4,9 +4,7 @@ import com.trabix.common.exception.RecursoNoEncontradoException;
 import com.trabix.common.exception.ValidacionNegocioException;
 import com.trabix.finance.dto.FondoRecompensasDTO;
 import com.trabix.finance.dto.MovimientoFondoDTO;
-import com.trabix.finance.entity.FondoRecompensas;
-import com.trabix.finance.entity.MovimientoFondo;
-import com.trabix.finance.entity.Usuario;
+import com.trabix.finance.entity.*;
 import com.trabix.finance.repository.FondoRecompensasRepository;
 import com.trabix.finance.repository.MovimientoFondoRepository;
 import com.trabix.finance.repository.UsuarioRepository;
@@ -25,7 +23,13 @@ import java.util.stream.Collectors;
 
 /**
  * Servicio para gestión del Fondo de Recompensas.
- * El fondo se alimenta con $200 por cada TRABIX vendido.
+ * 
+ * REGLA DE NEGOCIO CRÍTICA:
+ * El fondo se alimenta SOLO cuando un VENDEDOR paga un lote.
+ * El dinero del ADMIN/dueño NUNCA va al fondo.
+ * Por cada TRABIX del lote se agregan $200 (configurable).
+ * 
+ * Todo se gestiona manualmente por el ADMIN.
  */
 @Slf4j
 @Service
@@ -42,59 +46,104 @@ public class FondoRecompensasService {
         if (fondoRepository.count() == 0) {
             FondoRecompensas fondo = FondoRecompensas.builder()
                     .saldoActual(BigDecimal.ZERO)
+                    .totalIngresosHistorico(BigDecimal.ZERO)
+                    .totalEgresosHistorico(BigDecimal.ZERO)
+                    .totalMovimientos(0L)
                     .build();
             fondoRepository.save(fondo);
             log.info("Fondo de recompensas inicializado con saldo $0");
         }
     }
 
+    /**
+     * Obtiene el saldo actual del fondo.
+     */
     @Transactional(readOnly = true)
     public FondoRecompensasDTO.SaldoResponse obtenerSaldo() {
-        FondoRecompensas fondo = obtenerFondo();
+        FondoRecompensas fondo = obtenerFondoLectura();
         
-        BigDecimal totalIngresos = movimientoRepository.sumarTotalIngresos();
-        BigDecimal totalEgresos = movimientoRepository.sumarTotalEgresos();
-        long totalMovimientos = movimientoRepository.count();
-
         return FondoRecompensasDTO.SaldoResponse.builder()
                 .saldoActual(fondo.getSaldoActual())
-                .totalIngresos(totalIngresos)
-                .totalEgresos(totalEgresos)
-                .totalMovimientos(totalMovimientos)
+                .totalIngresos(fondo.getTotalIngresosHistorico())
+                .totalEgresos(fondo.getTotalEgresosHistorico())
+                .totalMovimientos(fondo.getTotalMovimientos())
                 .ultimaActualizacion(fondo.getUpdatedAt())
                 .build();
     }
 
+    /**
+     * Registra un ingreso al fondo.
+     * Se usa cuando un VENDEDOR paga un lote.
+     * 
+     * @param request Datos del ingreso (monto, vendedorId, cantidadTrabix, descripcion)
+     */
     @Transactional
     public MovimientoFondoDTO.Response ingresar(FondoRecompensasDTO.IngresoRequest request) {
-        FondoRecompensas fondo = obtenerFondo();
+        // Bloqueo pesimista para evitar race conditions
+        FondoRecompensas fondo = obtenerFondoParaActualizar();
         
+        // Validar vendedor origen si se proporciona
+        Usuario vendedorOrigen = null;
+        if (request.getVendedorId() != null) {
+            vendedorOrigen = usuarioRepository.findById(request.getVendedorId())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Vendedor", request.getVendedorId()));
+            
+            // Validar que sea vendedor (no admin)
+            if (vendedorOrigen.esAdmin()) {
+                throw new ValidacionNegocioException("El ADMIN/dueño no aporta al fondo. Solo los vendedores.");
+            }
+        }
+
+        // Realizar el ingreso
         BigDecimal nuevoSaldo = fondo.ingresar(request.getMonto());
         fondoRepository.save(fondo);
 
+        // Determinar tipo de referencia
+        ReferenciaMovimiento referenciaTipo = request.getReferenciaTipo();
+        if (referenciaTipo == null) {
+            referenciaTipo = vendedorOrigen != null ? ReferenciaMovimiento.PAGO_LOTE : ReferenciaMovimiento.OTRO;
+        }
+
+        // Crear movimiento
         MovimientoFondo movimiento = MovimientoFondo.builder()
                 .fondo(fondo)
-                .tipo("INGRESO")
+                .tipo(TipoMovimientoFondo.INGRESO)
                 .monto(request.getMonto())
                 .fecha(LocalDateTime.now())
                 .descripcion(request.getDescripcion())
+                .vendedorOrigen(vendedorOrigen)
                 .saldoPosterior(nuevoSaldo)
                 .referenciaId(request.getReferenciaId())
-                .referenciaTipo(request.getReferenciaTipo() != null ? request.getReferenciaTipo() : "MANUAL")
+                .referenciaTipo(referenciaTipo)
+                .cantidadTrabix(request.getCantidadTrabix())
                 .build();
 
         MovimientoFondo saved = movimientoRepository.save(movimiento);
-        log.info("Ingreso al fondo: ${} - {} - Nuevo saldo: ${}", request.getMonto(), request.getDescripcion(), nuevoSaldo);
+        
+        if (vendedorOrigen != null) {
+            log.info("Ingreso al fondo: ${} por {} ({}) - {} TRABIX - Nuevo saldo: ${}",
+                    request.getMonto(), vendedorOrigen.getNombre(), vendedorOrigen.getCedula(),
+                    request.getCantidadTrabix(), nuevoSaldo);
+        } else {
+            log.info("Ingreso al fondo: ${} - {} - Nuevo saldo: ${}",
+                    request.getMonto(), request.getDescripcion(), nuevoSaldo);
+        }
 
         return mapToResponse(saved);
     }
 
+    /**
+     * Retira dinero del fondo (egreso sin beneficiario específico).
+     */
     @Transactional
     public MovimientoFondoDTO.Response retirar(FondoRecompensasDTO.RetiroRequest request) {
-        FondoRecompensas fondo = obtenerFondo();
+        FondoRecompensas fondo = obtenerFondoParaActualizar();
 
         if (!fondo.tieneSaldoSuficiente(request.getMonto())) {
-            throw new ValidacionNegocioException("Saldo insuficiente. Disponible: $" + fondo.getSaldoActual());
+            throw new ValidacionNegocioException(
+                    String.format("Saldo insuficiente. Disponible: $%s, Solicitado: $%s",
+                            fondo.getSaldoActual(), request.getMonto())
+            );
         }
 
         BigDecimal nuevoSaldo = fondo.retirar(request.getMonto());
@@ -102,26 +151,33 @@ public class FondoRecompensasService {
 
         MovimientoFondo movimiento = MovimientoFondo.builder()
                 .fondo(fondo)
-                .tipo("EGRESO")
+                .tipo(TipoMovimientoFondo.EGRESO)
                 .monto(request.getMonto())
                 .fecha(LocalDateTime.now())
                 .descripcion(request.getDescripcion())
                 .saldoPosterior(nuevoSaldo)
-                .referenciaTipo("RETIRO")
+                .referenciaTipo(ReferenciaMovimiento.RETIRO)
                 .build();
 
         MovimientoFondo saved = movimientoRepository.save(movimiento);
-        log.info("Retiro del fondo: ${} - {} - Nuevo saldo: ${}", request.getMonto(), request.getDescripcion(), nuevoSaldo);
+        log.info("Retiro del fondo: ${} - {} - Nuevo saldo: ${}",
+                request.getMonto(), request.getDescripcion(), nuevoSaldo);
 
         return mapToResponse(saved);
     }
 
+    /**
+     * Entrega un premio a un beneficiario.
+     */
     @Transactional
     public MovimientoFondoDTO.Response premiar(FondoRecompensasDTO.PremioRequest request) {
-        FondoRecompensas fondo = obtenerFondo();
+        FondoRecompensas fondo = obtenerFondoParaActualizar();
 
         if (!fondo.tieneSaldoSuficiente(request.getMonto())) {
-            throw new ValidacionNegocioException("Saldo insuficiente. Disponible: $" + fondo.getSaldoActual());
+            throw new ValidacionNegocioException(
+                    String.format("Saldo insuficiente. Disponible: $%s, Solicitado: $%s",
+                            fondo.getSaldoActual(), request.getMonto())
+            );
         }
 
         Usuario beneficiario = usuarioRepository.findById(request.getBeneficiarioId())
@@ -130,15 +186,21 @@ public class FondoRecompensasService {
         BigDecimal nuevoSaldo = fondo.retirar(request.getMonto());
         fondoRepository.save(fondo);
 
+        // Tipo de premio (por defecto PREMIO, pero puede ser INCENTIVO o BONIFICACION)
+        ReferenciaMovimiento tipoPremio = request.getTipoPremio();
+        if (tipoPremio == null) {
+            tipoPremio = ReferenciaMovimiento.PREMIO;
+        }
+
         MovimientoFondo movimiento = MovimientoFondo.builder()
                 .fondo(fondo)
-                .tipo("EGRESO")
+                .tipo(TipoMovimientoFondo.EGRESO)
                 .monto(request.getMonto())
                 .fecha(LocalDateTime.now())
                 .descripcion(request.getDescripcion())
                 .beneficiario(beneficiario)
                 .saldoPosterior(nuevoSaldo)
-                .referenciaTipo("PREMIO")
+                .referenciaTipo(tipoPremio)
                 .build();
 
         MovimientoFondo saved = movimientoRepository.save(movimiento);
@@ -149,9 +211,12 @@ public class FondoRecompensasService {
         return mapToResponse(saved);
     }
 
+    /**
+     * Lista movimientos del fondo paginados.
+     */
     @Transactional(readOnly = true)
     public MovimientoFondoDTO.ListResponse listarMovimientos(Pageable pageable) {
-        FondoRecompensas fondo = obtenerFondo();
+        FondoRecompensas fondo = obtenerFondoLectura();
         Page<MovimientoFondo> page = movimientoRepository.findByFondoId(fondo.getId(), pageable);
 
         List<MovimientoFondoDTO.Response> movimientos = page.getContent().stream()
@@ -167,6 +232,9 @@ public class FondoRecompensasService {
                 .build();
     }
 
+    /**
+     * Lista los últimos 10 movimientos.
+     */
     @Transactional(readOnly = true)
     public List<MovimientoFondoDTO.Response> listarUltimosMovimientos() {
         return movimientoRepository.findTop10ByOrderByFechaDesc().stream()
@@ -174,13 +242,16 @@ public class FondoRecompensasService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Obtiene resumen del fondo en un período.
+     */
     @Transactional(readOnly = true)
     public FondoRecompensasDTO.ResumenPeriodo obtenerResumenPeriodo(LocalDateTime desde, LocalDateTime hasta) {
         BigDecimal ingresos = movimientoRepository.sumarIngresosPeriodo(desde, hasta);
         BigDecimal egresos = movimientoRepository.sumarEgresosPeriodo(desde, hasta);
-        
-        List<MovimientoFondo> movimientos = movimientoRepository.findByFechaBetweenOrderByFechaDesc(desde, hasta);
-        long premios = movimientos.stream().filter(MovimientoFondo::tieneBeneficiario).count();
+        long totalMovimientos = movimientoRepository.countByFechaBetween(desde, hasta);
+        long premios = movimientoRepository.contarPremiosPeriodo(desde, hasta);
+        long pagosLote = movimientoRepository.contarPagosLotePeriodo(desde, hasta);
 
         return FondoRecompensasDTO.ResumenPeriodo.builder()
                 .desde(desde)
@@ -188,18 +259,22 @@ public class FondoRecompensasService {
                 .ingresos(ingresos)
                 .egresos(egresos)
                 .balance(ingresos.subtract(egresos))
-                .cantidadMovimientos((long) movimientos.size())
+                .cantidadMovimientos(totalMovimientos)
                 .premiosEntregados(premios)
+                .pagosLoteRecibidos(pagosLote)
                 .build();
     }
 
+    /**
+     * Obtiene resumen de premios de un beneficiario.
+     */
     @Transactional(readOnly = true)
     public MovimientoFondoDTO.ResumenBeneficiario obtenerPremiosBeneficiario(Long usuarioId) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario", usuarioId));
 
         BigDecimal total = movimientoRepository.sumarPremiosPorBeneficiario(usuarioId);
-        long cantidad = movimientoRepository.countByBeneficiarioId(usuarioId);
+        long cantidad = movimientoRepository.contarPremiosPorBeneficiario(usuarioId);
 
         return MovimientoFondoDTO.ResumenBeneficiario.builder()
                 .beneficiarioId(usuarioId)
@@ -211,30 +286,48 @@ public class FondoRecompensasService {
     }
 
     /**
-     * Ingresa aporte automático por cuadre de lote.
+     * Obtiene resumen de aportes de un vendedor al fondo.
      */
-    @Transactional
-    public void ingresarAporteCuadre(Long cuadreId, BigDecimal monto, int cantidadTrabix) {
-        FondoRecompensasDTO.IngresoRequest request = FondoRecompensasDTO.IngresoRequest.builder()
-                .monto(monto)
-                .descripcion(String.format("Aporte automático por cuadre #%d (%d TRABIX)", cuadreId, cantidadTrabix))
-                .referenciaId(cuadreId)
-                .referenciaTipo("CUADRE")
+    @Transactional(readOnly = true)
+    public MovimientoFondoDTO.ResumenVendedor obtenerAportesVendedor(Long vendedorId) {
+        Usuario vendedor = usuarioRepository.findById(vendedorId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Vendedor", vendedorId));
+
+        BigDecimal totalAportado = movimientoRepository.sumarIngresosPorVendedor(vendedorId);
+        Long totalTrabix = movimientoRepository.sumarTrabixPorVendedor(vendedorId);
+        List<MovimientoFondo> pagos = movimientoRepository.findByVendedorOrigenIdOrderByFechaDesc(vendedorId);
+
+        return MovimientoFondoDTO.ResumenVendedor.builder()
+                .vendedorId(vendedorId)
+                .nombre(vendedor.getNombre())
+                .cedula(vendedor.getCedula())
+                .totalAportado(totalAportado)
+                .totalTrabix(totalTrabix != null ? totalTrabix : 0L)
+                .cantidadPagos((long) pagos.size())
                 .build();
-        
-        ingresar(request);
     }
 
-    private FondoRecompensas obtenerFondo() {
+    /**
+     * Obtiene el fondo para operaciones de solo lectura.
+     */
+    private FondoRecompensas obtenerFondoLectura() {
         return fondoRepository.findFirstByOrderByIdAsc()
-                .orElseThrow(() -> new RecursoNoEncontradoException("Fondo de recompensas no inicializado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("FondoRecompensas", "default"));
+    }
+
+    /**
+     * Obtiene el fondo con bloqueo pesimista para actualizaciones.
+     */
+    private FondoRecompensas obtenerFondoParaActualizar() {
+        return fondoRepository.findFirstForUpdate()
+                .orElseThrow(() -> new RecursoNoEncontradoException("FondoRecompensas", "default"));
     }
 
     private MovimientoFondoDTO.Response mapToResponse(MovimientoFondo movimiento) {
-        MovimientoFondoDTO.BeneficiarioInfo beneficiarioInfo = null;
+        MovimientoFondoDTO.UsuarioInfo beneficiarioInfo = null;
         if (movimiento.getBeneficiario() != null) {
             Usuario b = movimiento.getBeneficiario();
-            beneficiarioInfo = MovimientoFondoDTO.BeneficiarioInfo.builder()
+            beneficiarioInfo = MovimientoFondoDTO.UsuarioInfo.builder()
                     .id(b.getId())
                     .cedula(b.getCedula())
                     .nombre(b.getNombre())
@@ -242,16 +335,33 @@ public class FondoRecompensasService {
                     .build();
         }
 
+        MovimientoFondoDTO.UsuarioInfo vendedorOrigenInfo = null;
+        if (movimiento.getVendedorOrigen() != null) {
+            Usuario v = movimiento.getVendedorOrigen();
+            vendedorOrigenInfo = MovimientoFondoDTO.UsuarioInfo.builder()
+                    .id(v.getId())
+                    .cedula(v.getCedula())
+                    .nombre(v.getNombre())
+                    .nivel(v.getNivel())
+                    .build();
+        }
+
         return MovimientoFondoDTO.Response.builder()
                 .id(movimiento.getId())
                 .tipo(movimiento.getTipo())
+                .tipoDescripcion(movimiento.getTipo().getDescripcion())
                 .monto(movimiento.getMonto())
                 .fecha(movimiento.getFecha())
                 .descripcion(movimiento.getDescripcion())
                 .beneficiario(beneficiarioInfo)
+                .vendedorOrigen(vendedorOrigenInfo)
                 .saldoPosterior(movimiento.getSaldoPosterior())
                 .referenciaId(movimiento.getReferenciaId())
                 .referenciaTipo(movimiento.getReferenciaTipo())
+                .referenciaTipoDescripcion(movimiento.getReferenciaTipo() != null ? 
+                        movimiento.getReferenciaTipo().getDescripcion() : null)
+                .cantidadTrabix(movimiento.getCantidadTrabix())
+                .createdAt(movimiento.getCreatedAt())
                 .build();
     }
 }

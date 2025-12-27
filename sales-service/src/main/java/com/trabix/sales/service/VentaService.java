@@ -15,7 +15,6 @@ import com.trabix.sales.repository.UsuarioRepository;
 import com.trabix.sales.repository.VentaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -38,6 +37,14 @@ import java.util.stream.Collectors;
  * - Stock se restaura si se rechaza
  * - Ganancias se calculan según modelo del lote (60/40 o 50/50)
  * - Al aprobar se verifica si hay trigger de cuadre
+ * 
+ * PRECIOS:
+ * - UNIDAD: $8,000 (con licor)
+ * - PROMO: $12,000 total (2 unidades x $6,000 c/u)
+ * - SIN_LICOR: $7,000
+ * - REGALO: $0 (máximo 8% del stock del lote)
+ * - MAYOR_CON_LICOR: >20 unidades, precio escalado
+ * - MAYOR_SIN_LICOR: >20 unidades, precio escalado
  */
 @Slf4j
 @Service
@@ -49,22 +56,26 @@ public class VentaService {
     private final LoteRepository loteRepository;
     private final UsuarioRepository usuarioRepository;
 
-    @Value("${trabix.precios.unidad:8000}")
-    private int precioUnidad;
+    // === PRECIOS FIJOS ===
+    private static final BigDecimal PRECIO_UNIDAD = new BigDecimal("8000");
+    private static final BigDecimal PRECIO_PROMO_UNITARIO = new BigDecimal("6000"); // $12,000 / 2
+    private static final BigDecimal PRECIO_SIN_LICOR = new BigDecimal("7000");
 
-    @Value("${trabix.precios.promo:6000}")
-    private int precioPromo;
+    // === PRECIOS AL MAYOR CON LICOR ===
+    private static final BigDecimal MAYOR_CON_LICOR_21_49 = new BigDecimal("4900");
+    private static final BigDecimal MAYOR_CON_LICOR_50_99 = new BigDecimal("4700");
+    private static final BigDecimal MAYOR_CON_LICOR_100_MAS = new BigDecimal("4500");
 
-    @Value("${trabix.precios.sin-licor:7000}")
-    private int precioSinLicor;
+    // === PRECIOS AL MAYOR SIN LICOR ===
+    private static final BigDecimal MAYOR_SIN_LICOR_21_49 = new BigDecimal("4800");
+    private static final BigDecimal MAYOR_SIN_LICOR_50_99 = new BigDecimal("4500");
+    private static final BigDecimal MAYOR_SIN_LICOR_100_MAS = new BigDecimal("4200");
 
-    @Value("${trabix.precios.regalo:0}")
-    private int precioRegalo;
+    // === LÍMITES ===
+    private static final int CANTIDAD_MINIMA_MAYOR = 21;
+    private static final int LIMITE_REGALOS_PORCENTAJE = 8;
 
-    @Value("${trabix.limite-regalos-porcentaje:8}")
-    private int limiteRegalosPorcentaje;
-
-    // Umbrales de cuadre
+    // === UMBRALES DE CUADRE ===
     private static final int TANDA1_ALERTA_PORCENTAJE = 20;
     private static final int TANDA2_CUADRE_PORCENTAJE = 10;
     private static final int TANDA3_CUADRE_PORCENTAJE = 20;
@@ -105,30 +116,11 @@ public class VentaService {
                             tanda.getStockActual(), request.getCantidad()));
         }
 
-        // Validar límite de regalos
-        if (request.getTipo() == TipoVenta.REGALO) {
-            validarLimiteRegalos(tanda, request.getCantidad());
-        }
+        // Validaciones específicas por tipo
+        validarSegunTipo(request, tanda);
 
-        // Validar promo (debe ser múltiplo de 2 para 2x1)
-        if (request.getTipo() == TipoVenta.PROMO && request.getCantidad() % 2 != 0) {
-            throw new ValidacionNegocioException("La promo 2x1 requiere cantidad par");
-        }
-
-        // Validar venta al mayor (requiere precio)
-        if (request.getTipo() == TipoVenta.MAYOR) {
-            if (request.getPrecioUnitarioMayor() == null || request.getPrecioUnitarioMayor().compareTo(BigDecimal.ZERO) <= 0) {
-                throw new ValidacionNegocioException("La venta al mayor requiere precio unitario");
-            }
-        }
-
-        // Calcular precio
-        BigDecimal precioUnitario;
-        if (request.getTipo() == TipoVenta.MAYOR) {
-            precioUnitario = request.getPrecioUnitarioMayor();
-        } else {
-            precioUnitario = calcularPrecioUnitario(request.getTipo());
-        }
+        // Calcular precio según tipo y cantidad
+        BigDecimal precioUnitario = calcularPrecioUnitario(request.getTipo(), request.getCantidad());
         BigDecimal precioTotal = precioUnitario.multiply(BigDecimal.valueOf(request.getCantidad()));
 
         // Crear venta
@@ -152,12 +144,91 @@ public class VentaService {
 
         venta = ventaRepository.save(venta);
 
-        log.info("📝 Venta registrada: ID={}, Usuario={}, Lote={}, Tanda={}, Tipo={}, Cantidad={}, Total={}, Ganancia={}, ParaSamuel={}",
+        log.info("📝 Venta registrada: ID={}, Usuario={}, Lote={}, Tanda={}, Tipo={}, Cantidad={}, PrecioUnit={}, Total={}, Ganancia={}, ParaSamuel={}",
                 venta.getId(), usuario.getCedula(), lote.getId(), tanda.getNumero(),
-                request.getTipo(), request.getCantidad(), precioTotal,
+                request.getTipo(), request.getCantidad(), precioUnitario, precioTotal,
                 venta.getGananciaVendedor(), venta.getParteSamuel());
 
         return mapToResponse(venta, tanda, lote, usuario);
+    }
+
+    /**
+     * Validaciones específicas según tipo de venta.
+     */
+    private void validarSegunTipo(RegistrarVentaRequest request, Tanda tanda) {
+        TipoVenta tipo = request.getTipo();
+        int cantidad = request.getCantidad();
+
+        switch (tipo) {
+            case PROMO -> {
+                // Promo 2x1 requiere cantidad par
+                if (cantidad % 2 != 0) {
+                    throw new ValidacionNegocioException("La promo 2x1 requiere cantidad par (2, 4, 6, etc.)");
+                }
+            }
+            case REGALO -> {
+                // Máximo 8% del stock del lote
+                validarLimiteRegalos(tanda, cantidad);
+            }
+            case MAYOR_CON_LICOR, MAYOR_SIN_LICOR -> {
+                // Ventas al mayor requieren >20 unidades
+                if (cantidad < CANTIDAD_MINIMA_MAYOR) {
+                    throw new ValidacionNegocioException(
+                            String.format("Ventas al mayor requieren mínimo %d unidades. Solicitado: %d",
+                                    CANTIDAD_MINIMA_MAYOR, cantidad));
+                }
+            }
+            default -> {
+                // UNIDAD y SIN_LICOR no tienen validaciones especiales
+            }
+        }
+    }
+
+    /**
+     * Calcula el precio unitario según tipo de venta y cantidad.
+     * 
+     * PRECIOS AL MAYOR (escalados):
+     * | Cantidad | Con Licor | Sin Licor |
+     * |----------|-----------|-----------|
+     * | 21-49    | $4,900    | $4,800    |
+     * | 50-99    | $4,700    | $4,500    |
+     * | 100+     | $4,500    | $4,200    |
+     */
+    private BigDecimal calcularPrecioUnitario(TipoVenta tipo, int cantidad) {
+        return switch (tipo) {
+            case UNIDAD -> PRECIO_UNIDAD;
+            case PROMO -> PRECIO_PROMO_UNITARIO;
+            case SIN_LICOR -> PRECIO_SIN_LICOR;
+            case REGALO -> BigDecimal.ZERO;
+            case MAYOR_CON_LICOR -> calcularPrecioMayorConLicor(cantidad);
+            case MAYOR_SIN_LICOR -> calcularPrecioMayorSinLicor(cantidad);
+        };
+    }
+
+    /**
+     * Calcula precio al mayor CON licor según cantidad.
+     */
+    private BigDecimal calcularPrecioMayorConLicor(int cantidad) {
+        if (cantidad >= 100) {
+            return MAYOR_CON_LICOR_100_MAS;
+        } else if (cantidad >= 50) {
+            return MAYOR_CON_LICOR_50_99;
+        } else {
+            return MAYOR_CON_LICOR_21_49;
+        }
+    }
+
+    /**
+     * Calcula precio al mayor SIN licor según cantidad.
+     */
+    private BigDecimal calcularPrecioMayorSinLicor(int cantidad) {
+        if (cantidad >= 100) {
+            return MAYOR_SIN_LICOR_100_MAS;
+        } else if (cantidad >= 50) {
+            return MAYOR_SIN_LICOR_50_99;
+        } else {
+            return MAYOR_SIN_LICOR_21_49;
+        }
     }
 
     /**
@@ -188,6 +259,21 @@ public class VentaService {
     }
 
     /**
+     * Valida límite de regalos (máximo 8% del stock del lote).
+     */
+    private void validarLimiteRegalos(Tanda tanda, int cantidadSolicitada) {
+        int regalosPrevios = ventaRepository.contarRegalosPorTanda(tanda.getId());
+        int limiteRegalos = (tanda.getStockEntregado() * LIMITE_REGALOS_PORCENTAJE) / 100;
+        int regalosDisponibles = Math.max(0, limiteRegalos - regalosPrevios);
+
+        if (cantidadSolicitada > regalosDisponibles) {
+            throw new ValidacionNegocioException(
+                    String.format("Límite de regalos alcanzado (máx %d%% del stock). Disponible: %d, Solicitado: %d",
+                            LIMITE_REGALOS_PORCENTAJE, regalosDisponibles, cantidadSolicitada));
+        }
+    }
+
+    /**
      * Aprueba una venta pendiente.
      */
     @Transactional
@@ -214,6 +300,11 @@ public class VentaService {
 
     /**
      * Verifica si hay triggers de cuadre después de una venta aprobada.
+     * 
+     * TRIGGERS:
+     * - Tanda 1: 20% = alerta (cuadre real es por monto, no porcentaje)
+     * - Tanda 2 (en lotes de 3): 10% = cuadre
+     * - Tanda 2 (en lotes de 2) / Tanda 3: 20% = cuadre, 0% = mini-cuadre
      */
     private void verificarTriggersCuadre(Tanda tanda) {
         double porcentajeRestante = tanda.getPorcentajeStockRestante();
@@ -224,21 +315,25 @@ public class VentaService {
         boolean esUltimaTanda = numeroTanda == totalTandas;
 
         if (numeroTanda == 1) {
+            // Tanda 1: Solo alerta (cuadre real es por monto recaudado >= inversión Samuel)
             if (porcentajeRestante <= TANDA1_ALERTA_PORCENTAJE && porcentajeRestante > 0) {
-                log.info("📢 ALERTA Tanda 1: Lote {} tiene {}% de stock. Cuadre pendiente cuando se recupere inversión Samuel.",
-                        tanda.getLoteId(), Math.round(porcentajeRestante));
+                log.info("📢 ALERTA Tanda 1: Lote {} tiene {:.1f}% de stock. Verificar si recaudado >= inversión Samuel.",
+                        tanda.getLoteId(), porcentajeRestante);
             }
-        } else if (!esUltimaTanda) {
+        } else if (totalTandas == 3 && numeroTanda == 2) {
+            // Tanda 2 en lotes de 3 tandas: trigger al 10%
             if (porcentajeRestante <= TANDA2_CUADRE_PORCENTAJE) {
-                log.info("🔔 TRIGGER CUADRE Tanda {}: Lote {} tiene {}% de stock. ¡Cuadre requerido!",
-                        numeroTanda, tanda.getLoteId(), Math.round(porcentajeRestante));
+                log.info("🔔 TRIGGER CUADRE Tanda 2: Lote {} tiene {:.1f}% de stock. ¡Cuadre requerido!",
+                        tanda.getLoteId(), porcentajeRestante);
             }
-        } else {
+        } else if (esUltimaTanda) {
+            // Última tanda (T2 en lotes de 2, T3 en lotes de 3): trigger al 20%
             if (porcentajeRestante <= TANDA3_CUADRE_PORCENTAJE && porcentajeRestante > 0) {
-                log.info("🔔 TRIGGER CUADRE Tanda {} (final): Lote {} tiene {}% de stock. ¡Cuadre requerido!",
-                        numeroTanda, tanda.getLoteId(), Math.round(porcentajeRestante));
+                log.info("🔔 TRIGGER CUADRE Tanda {} (final): Lote {} tiene {:.1f}% de stock. ¡Cuadre requerido!",
+                        numeroTanda, tanda.getLoteId(), porcentajeRestante);
             }
 
+            // Mini-cuadre cuando llega a 0
             if (tanda.getStockActual() == 0) {
                 log.info("🏁 MINI-CUADRE FINAL: Lote {} - Tanda {} agotada completamente.",
                         tanda.getLoteId(), numeroTanda);
@@ -394,10 +489,10 @@ public class VentaService {
                     ventasRegalo = count;
                     unidadesRegalo = unidades;
                 }
-                case MAYOR -> {
-                    ventasMayor = count;
-                    unidadesMayor = unidades;
-                    recaudadoMayor = monto;
+                case MAYOR_CON_LICOR, MAYOR_SIN_LICOR -> {
+                    ventasMayor += count;
+                    unidadesMayor += unidades;
+                    recaudadoMayor = recaudadoMayor.add(monto);
                 }
             }
         }
@@ -459,29 +554,7 @@ public class VentaService {
         return ventaRepository.countByEstado(EstadoVenta.PENDIENTE);
     }
 
-    // === Métodos privados ===
-
-    private BigDecimal calcularPrecioUnitario(TipoVenta tipo) {
-        return switch (tipo) {
-            case UNIDAD -> BigDecimal.valueOf(precioUnidad);
-            case PROMO -> BigDecimal.valueOf(precioPromo);
-            case SIN_LICOR -> BigDecimal.valueOf(precioSinLicor);
-            case REGALO -> BigDecimal.ZERO;
-            case MAYOR -> BigDecimal.ZERO;
-        };
-    }
-
-    private void validarLimiteRegalos(Tanda tanda, int cantidadSolicitada) {
-        int regalosPrevios = ventaRepository.contarRegalosPorTanda(tanda.getId());
-        int limiteRegalos = (tanda.getStockEntregado() * limiteRegalosPorcentaje) / 100;
-        int regalosDisponibles = Math.max(0, limiteRegalos - regalosPrevios);
-
-        if (cantidadSolicitada > regalosDisponibles) {
-            throw new ValidacionNegocioException(
-                    String.format("Límite de regalos alcanzado. Disponible: %d, Solicitado: %d",
-                            regalosDisponibles, cantidadSolicitada));
-        }
-    }
+    // === MAPPERS ===
 
     /**
      * Mapeo completo con lote cargado.
@@ -502,9 +575,9 @@ public class VentaService {
 
         if (tanda.getNumero() == 1) {
             proximoACuadre = porcentaje <= TANDA1_ALERTA_PORCENTAJE;
-        } else if (!esUltimaTanda) {
+        } else if (totalTandas == 3 && tanda.getNumero() == 2) {
             proximoACuadre = porcentaje <= TANDA2_CUADRE_PORCENTAJE + 5;
-        } else {
+        } else if (esUltimaTanda) {
             proximoACuadre = porcentaje <= TANDA3_CUADRE_PORCENTAJE + 5;
         }
 

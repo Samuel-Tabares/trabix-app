@@ -21,9 +21,7 @@ public class ConfiguracionCostosDTO {
         private BigDecimal costoRealTrabix;
         private BigDecimal costoPercibidoTrabix;
         private BigDecimal aporteFondoPorTrabix;
-        private BigDecimal aporteGestionPorTrabix;
         private BigDecimal diferenciaCosto;
-        private BigDecimal margenTotalPorTrabix;
         private LocalDateTime fechaActualizacion;
     }
 
@@ -44,14 +42,11 @@ public class ConfiguracionCostosDTO {
         @NotNull(message = "El aporte al fondo es requerido")
         @DecimalMin(value = "0", message = "El aporte al fondo no puede ser negativo")
         private BigDecimal aporteFondoPorTrabix;
-        
-        @NotNull(message = "El aporte de gestión es requerido")
-        @DecimalMin(value = "0", message = "El aporte de gestión no puede ser negativo")
-        private BigDecimal aporteGestionPorTrabix;
     }
 
     /**
      * Vista simplificada para vendedores.
+     * Solo muestra el costo percibido, no el real.
      */
     @Data
     @Builder

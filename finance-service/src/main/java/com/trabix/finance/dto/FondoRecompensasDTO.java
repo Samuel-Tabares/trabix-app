@@ -1,8 +1,10 @@
 package com.trabix.finance.dto;
 
+import com.trabix.finance.entity.ReferenciaMovimiento;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Min;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -25,6 +27,10 @@ public class FondoRecompensasDTO {
         private LocalDateTime ultimaActualizacion;
     }
 
+    /**
+     * Request para ingreso manual al fondo.
+     * Usado por ADMIN para registrar pagos de lotes de vendedores.
+     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -38,10 +44,31 @@ public class FondoRecompensasDTO {
         @NotBlank(message = "La descripción es requerida")
         private String descripcion;
         
+        /**
+         * ID del vendedor que pagó el lote (obligatorio para ingresos por pago de lote).
+         */
+        private Long vendedorId;
+        
+        /**
+         * Cantidad de TRABIX del lote pagado.
+         */
+        @Min(value = 1, message = "La cantidad de TRABIX debe ser mayor a 0")
+        private Integer cantidadTrabix;
+        
+        /**
+         * ID de referencia externa (lote, cuadre, etc.)
+         */
         private Long referenciaId;
-        private String referenciaTipo;
+        
+        /**
+         * Tipo de referencia.
+         */
+        private ReferenciaMovimiento referenciaTipo;
     }
 
+    /**
+     * Request para retiro del fondo.
+     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -56,6 +83,9 @@ public class FondoRecompensasDTO {
         private String descripcion;
     }
 
+    /**
+     * Request para entregar premio a un beneficiario.
+     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -71,6 +101,12 @@ public class FondoRecompensasDTO {
         
         @NotBlank(message = "La descripción es requerida")
         private String descripcion;
+        
+        /**
+         * Tipo de premio (PREMIO, INCENTIVO, BONIFICACION).
+         * Por defecto: PREMIO
+         */
+        private ReferenciaMovimiento tipoPremio;
     }
 
     @Data
@@ -85,5 +121,6 @@ public class FondoRecompensasDTO {
         private BigDecimal balance;
         private Long cantidadMovimientos;
         private Long premiosEntregados;
+        private Long pagosLoteRecibidos;
     }
 }

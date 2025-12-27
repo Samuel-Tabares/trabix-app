@@ -3,12 +3,6 @@ package com.trabix.document.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import org.hibernate.annotations.Type;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
-import java.util.List;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -56,9 +50,8 @@ public class Documento {
     @Column(name = "cliente_correo", length = 100)
     private String clienteCorreo;
 
-    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "JSONB", nullable = false)
-    private List<ItemDocumento> items;
+    private String items;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal;

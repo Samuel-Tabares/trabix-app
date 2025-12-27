@@ -14,14 +14,6 @@ public class RecursoNoEncontradoException extends TrabixException {
             HttpStatus.NOT_FOUND
         );
     }
-    public RecursoNoEncontradoException(String mensaje) {
-        super(
-                String.format("%s no encontrado"),
-                "RECURSO_NO_ENCONTRADO",
-                HttpStatus.NOT_FOUND
-        );
-    }
-
 
     public RecursoNoEncontradoException(String recurso, String identificador) {
         super(

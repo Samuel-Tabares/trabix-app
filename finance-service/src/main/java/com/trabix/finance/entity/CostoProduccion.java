@@ -9,10 +9,22 @@ import java.time.LocalDateTime;
 /**
  * Registro de Costos de Producción.
  * 
- * Tipos: PRODUCCION, INSUMO, MARKETING, OTRO
+ * Permite llevar un control de todos los gastos operativos:
+ * - PRODUCCION: Costos directos de fabricación
+ * - INSUMO: Materiales y suministros (pitillos, etc.)
+ * - MARKETING: Publicidad y promoción
+ * - OPERATIVO: Gastos operativos generales
+ * - ENVIO: Costos de envío
+ * - OTRO: Gastos varios
+ * 
+ * El ADMIN registra estos gastos manualmente.
  */
 @Entity
-@Table(name = "costos_produccion")
+@Table(name = "costos_produccion", indexes = {
+    @Index(name = "idx_costo_fecha", columnList = "fecha"),
+    @Index(name = "idx_costo_tipo", columnList = "tipo"),
+    @Index(name = "idx_costo_tipo_fecha", columnList = "tipo, fecha")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -35,8 +47,9 @@ public class CostoProduccion {
     @Column(name = "costo_total", nullable = false, precision = 12, scale = 2)
     private BigDecimal costoTotal;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String tipo;
+    private TipoCosto tipo;
 
     @Column(nullable = false)
     private LocalDateTime fecha;
@@ -53,18 +66,105 @@ public class CostoProduccion {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    /**
+     * Control de concurrencia optimista.
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
+        
         if (fecha == null) {
-            fecha = LocalDateTime.now();
+            fecha = now;
         }
-        if (costoTotal == null && costoUnitario != null && cantidad != null) {
-            costoTotal = costoUnitario.multiply(BigDecimal.valueOf(cantidad));
+        
+        calcularCostoTotal();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+        calcularCostoTotal();
+    }
+
+    /**
+     * Calcula el costo total basado en cantidad y costo unitario.
+     * Protegido contra valores null.
+     */
+    public void calcularCostoTotal() {
+        if (costoUnitario != null && cantidad != null && cantidad > 0) {
+            this.costoTotal = costoUnitario.multiply(BigDecimal.valueOf(cantidad));
+        } else {
+            this.costoTotal = BigDecimal.ZERO;
         }
     }
 
+    /**
+     * Recalcula el total después de modificaciones.
+     */
     public void recalcularTotal() {
-        this.costoTotal = this.costoUnitario.multiply(BigDecimal.valueOf(this.cantidad));
+        if (costoUnitario == null) {
+            throw new IllegalStateException("El costo unitario no puede ser null");
+        }
+        if (cantidad == null || cantidad <= 0) {
+            throw new IllegalStateException("La cantidad debe ser mayor a 0");
+        }
+        calcularCostoTotal();
+    }
+
+    /**
+     * Actualiza cantidad y recalcula total.
+     */
+    public void actualizarCantidad(Integer nuevaCantidad) {
+        if (nuevaCantidad == null || nuevaCantidad <= 0) {
+            throw new IllegalArgumentException("La cantidad debe ser mayor a 0");
+        }
+        this.cantidad = nuevaCantidad;
+        calcularCostoTotal();
+    }
+
+    /**
+     * Actualiza costo unitario y recalcula total.
+     */
+    public void actualizarCostoUnitario(BigDecimal nuevoCosto) {
+        if (nuevoCosto == null || nuevoCosto.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El costo unitario debe ser mayor a 0");
+        }
+        this.costoUnitario = nuevoCosto;
+        calcularCostoTotal();
+    }
+
+    /**
+     * Verifica si el registro tiene factura asociada.
+     */
+    public boolean tieneFactura() {
+        return numeroFactura != null && !numeroFactura.isBlank();
+    }
+
+    /**
+     * Verifica si el registro tiene proveedor.
+     */
+    public boolean tieneProveedor() {
+        return proveedor != null && !proveedor.isBlank();
+    }
+
+    /**
+     * Obtiene descripción completa del costo.
+     */
+    public String getDescripcionCompleta() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(concepto);
+        sb.append(" - ").append(cantidad).append(" x $").append(costoUnitario);
+        sb.append(" = $").append(costoTotal);
+        sb.append(" (").append(tipo.getDescripcion()).append(")");
+        return sb.toString();
     }
 }
