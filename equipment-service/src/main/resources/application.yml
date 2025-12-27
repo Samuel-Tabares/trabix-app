@@ -10,6 +10,12 @@ spring:
     username: ${DB_USER:trabix_admin}
     password: ${DB_PASSWORD:trabix_secure_2024}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
@@ -19,20 +25,38 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
 
-# Configuración JWT
+# Configuración JWT (misma clave que auth-service)
 jwt:
   secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits}
 
 # Configuración de equipos
 trabix:
   equipos:
-    mensualidad-default: 10000
+    # Mensualidad por kit (nevera + pijama)
+    mensualidad: 10000
+    # Costos de reposición
     costo-reposicion:
-      nevera: 350000
-      pijama: 80000
+      nevera: 25000
+      pijama: 55000
 
 # Logging
 logging:
   level:
     com.trabix: DEBUG
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized

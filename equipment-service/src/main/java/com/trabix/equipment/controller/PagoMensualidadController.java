@@ -3,6 +3,7 @@ package com.trabix.equipment.controller;
 import com.trabix.equipment.dto.PagoMensualidadDTO;
 import com.trabix.equipment.entity.Usuario;
 import com.trabix.equipment.service.PagoMensualidadService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,7 +26,7 @@ public class PagoMensualidadController {
 
     private final PagoMensualidadService service;
 
-    // === Operaciones Admin ===
+    // ==================== OPERACIONES ADMIN ====================
 
     @PostMapping("/{id}/pagar")
     @PreAuthorize("hasRole('ADMIN')")
@@ -38,18 +39,17 @@ public class PagoMensualidadController {
     @PostMapping("/generar")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> generarMensualidades(
-            @RequestParam Integer mes,
-            @RequestParam Integer anio) {
-        int generadas = service.generarMensualidades(mes, anio);
+            @Valid @RequestBody PagoMensualidadDTO.GenerarMensualidadesRequest request) {
+        int generadas = service.generarMensualidades(request.getMes(), request.getAnio());
         return ResponseEntity.ok(Map.of(
                 "mensaje", "Mensualidades generadas exitosamente",
-                "mes", mes,
-                "anio", anio,
+                "mes", request.getMes(),
+                "anio", request.getAnio(),
                 "generadas", generadas
         ));
     }
 
-    // === Consultas Admin ===
+    // ==================== CONSULTAS ADMIN ====================
 
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -62,8 +62,17 @@ public class PagoMensualidadController {
     public ResponseEntity<PagoMensualidadDTO.ListResponse> listarPendientes(
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamano) {
-        Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("anio", "mes").ascending());
+        Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("fechaVencimiento").ascending());
         return ResponseEntity.ok(service.listarPendientes(pageable));
+    }
+
+    @GetMapping("/vencidos")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<PagoMensualidadDTO.ListResponse> listarVencidos(
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "20") int tamano) {
+        Pageable pageable = PageRequest.of(pagina, tamano, Sort.by("fechaVencimiento").ascending());
+        return ResponseEntity.ok(service.listarVencidos(pageable));
     }
 
     @GetMapping("/pagados")
@@ -75,11 +84,11 @@ public class PagoMensualidadController {
         return ResponseEntity.ok(service.listarPagados(pageable));
     }
 
-    @GetMapping("/equipo/{equipoId}")
+    @GetMapping("/asignacion/{asignacionId}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<PagoMensualidadDTO.Response>> listarPorEquipo(
-            @PathVariable Long equipoId) {
-        return ResponseEntity.ok(service.listarPorEquipo(equipoId));
+    public ResponseEntity<List<PagoMensualidadDTO.Response>> listarPorAsignacion(
+            @PathVariable Long asignacionId) {
+        return ResponseEntity.ok(service.listarPorAsignacion(asignacionId));
     }
 
     @GetMapping("/usuario/{usuarioId}/pendientes")
@@ -87,6 +96,13 @@ public class PagoMensualidadController {
     public ResponseEntity<List<PagoMensualidadDTO.Response>> listarPendientesPorUsuario(
             @PathVariable Long usuarioId) {
         return ResponseEntity.ok(service.listarPendientesPorUsuario(usuarioId));
+    }
+
+    @GetMapping("/usuario/{usuarioId}/vencidos")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<PagoMensualidadDTO.Response>> listarVencidosPorUsuario(
+            @PathVariable Long usuarioId) {
+        return ResponseEntity.ok(service.listarVencidosPorUsuario(usuarioId));
     }
 
     @GetMapping("/mes")
@@ -105,11 +121,17 @@ public class PagoMensualidadController {
         return ResponseEntity.ok(service.obtenerResumenMes(mes, anio));
     }
 
-    // === Consultas del vendedor autenticado ===
+    // ==================== CONSULTAS VENDEDOR AUTENTICADO ====================
 
     @GetMapping("/me/pendientes")
     public ResponseEntity<List<PagoMensualidadDTO.Response>> misPagosPendientes(
             @AuthenticationPrincipal Usuario usuario) {
         return ResponseEntity.ok(service.listarPendientesPorUsuario(usuario.getId()));
+    }
+
+    @GetMapping("/me/vencidos")
+    public ResponseEntity<List<PagoMensualidadDTO.Response>> misPagosVencidos(
+            @AuthenticationPrincipal Usuario usuario) {
+        return ResponseEntity.ok(service.listarVencidosPorUsuario(usuario.getId()));
     }
 }

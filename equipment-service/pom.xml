@@ -12,7 +12,7 @@
 
     <artifactId>equipment-service</artifactId>
     <packaging>jar</packaging>
-    <description>Servicio de equipos: neveras, pijamas y mensualidades</description>
+    <description>Servicio de equipos: kits (nevera + pijama) y mensualidades</description>
 
     <dependencies>
         <!-- Módulo común -->

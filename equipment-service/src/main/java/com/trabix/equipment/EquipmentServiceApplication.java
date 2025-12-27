@@ -8,11 +8,24 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Servicio de equipos TRABIX.
  * Puerto: 8086
  * 
- * Funcionalidades:
- * - Gestión de equipos (neveras, pijamas)
- * - Asignación a vendedores
- * - Control de mensualidades ($10,000/mes)
- * - Registro de pagos
+ * MODELO DE NEGOCIO:
+ * - Kit = Nevera + Pijama (siempre van juntos)
+ * - Solo 1 kit por vendedor
+ * - Mensualidad: $10,000/mes por el kit
+ * - Se paga primero, luego se asigna
+ * - Día de pago = mismo día que pagó primera vez
+ * 
+ * STOCK:
+ * - Admin tiene X kits disponibles
+ * - Al asignar: disponibles - 1
+ * - Al devolver o reponer: disponibles + 1
+ * 
+ * PÉRDIDA/DAÑO:
+ * - Nevera: $25,000 | Pijama: $55,000 (configurable)
+ * - Se cancela mensualidad hasta que pague y se reponga
+ * 
+ * PAGOS PENDIENTES:
+ * - Bloquean el flujo de cuadres (no puede desbloquear tandas)
  */
 @SpringBootApplication(scanBasePackages = {"com.trabix.equipment", "com.trabix.common"})
 @EnableScheduling

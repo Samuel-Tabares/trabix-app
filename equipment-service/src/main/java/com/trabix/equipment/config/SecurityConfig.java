@@ -39,30 +39,36 @@ public class SecurityConfig {
                 // Endpoints públicos
                 .requestMatchers(
                     "/actuator/health",
+                    "/actuator/info",
                     "/error"
                 ).permitAll()
                 
-                // === Equipos ===
-                // Gestión de equipos solo admin
-                .requestMatchers(HttpMethod.POST, "/equipos").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT, "/equipos/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/equipos/*/devolver").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/equipos/*/perdido").hasRole("ADMIN")
-                // Consultas admin de equipos
-                .requestMatchers(HttpMethod.GET, "/equipos/estado/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.GET, "/equipos/tipo/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.GET, "/equipos/usuario/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.GET, "/equipos/resumen").hasRole("ADMIN")
-                // Mis equipos - autenticados
-                .requestMatchers("/equipos/me/**").authenticated()
+                // === Stock (solo admin) ===
+                .requestMatchers("/stock/**").hasRole("ADMIN")
+                
+                // === Asignaciones ===
+                // Operaciones solo admin
+                .requestMatchers(HttpMethod.POST, "/asignaciones").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/asignaciones/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/asignaciones/*/devolver").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/asignaciones/*/cancelar").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/asignaciones/*/confirmar-reposicion").hasRole("ADMIN")
+                // Consultas admin
+                .requestMatchers(HttpMethod.GET, "/asignaciones/estado/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/asignaciones/usuario/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/asignaciones/resumen").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/asignaciones/pendientes-reposicion").hasRole("ADMIN")
+                // Mis asignaciones - autenticados
+                .requestMatchers("/asignaciones/me/**").authenticated()
                 
                 // === Mensualidades ===
-                // Gestión solo admin
+                // Operaciones solo admin
                 .requestMatchers(HttpMethod.POST, "/mensualidades/**").hasRole("ADMIN")
                 // Consultas admin
                 .requestMatchers(HttpMethod.GET, "/mensualidades/pendientes").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/mensualidades/vencidos").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/mensualidades/pagados").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.GET, "/mensualidades/equipo/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/mensualidades/asignacion/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/mensualidades/usuario/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/mensualidades/mes/**").hasRole("ADMIN")
                 // Mis pagos - autenticados
