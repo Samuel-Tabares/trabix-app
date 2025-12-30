@@ -27,6 +27,9 @@ public class StockProduccion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private Long version;
+
     /**
      * Total de TRABIX producidos históricamente.
      */

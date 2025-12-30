@@ -11,8 +11,8 @@ import java.time.LocalDateTime;
  * Entidad Cuadre - representa un cuadre de inversión o ganancias.
  * 
  * Tipos de cuadre:
- * - INVERSION: Primer cuadre para recuperar la inversión de Samuel
- * - GANANCIA: Cuadres posteriores para repartir ganancias según modelo
+ * - INVERSION: Cuadre para recuperar inversión (T1 = Samuel)
+ * - GANANCIA: Cuadres que involucran distribución de ganancias (T2, T3)
  * 
  * Estados:
  * - PENDIENTE: Cuadre generado, esperando transferencia
@@ -70,7 +70,7 @@ public class Cuadre {
     @Column(name = "monto_vendedor", precision = 12, scale = 2)
     private BigDecimal montoVendedor;
 
-    /** Monto que sube en cascada (para N3+) */
+    /** Monto que sube en cascada (para modelo 50/50) */
     @Column(name = "monto_cascada", precision = 12, scale = 2)
     private BigDecimal montoCascada;
 

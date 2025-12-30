@@ -52,6 +52,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/cuadres/resumen").hasRole("ADMIN")
                 // Detectar tandas para cuadre solo admin
                 .requestMatchers(HttpMethod.GET, "/cuadres/detectar").hasRole("ADMIN")
+                // Alertas solo admin
+                .requestMatchers(HttpMethod.GET, "/cuadres/alertas").hasRole("ADMIN")
                 // Resto requiere autenticación
                 .anyRequest().authenticated()
             )

@@ -9,6 +9,11 @@ import lombok.NoArgsConstructor;
 
 /**
  * Request para crear un nuevo lote de granizados.
+ * 
+ * Reglas:
+ * - < 50 TRABIX = 2 tandas (50% / 50%)
+ * - >= 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
+ * - Inversión SIEMPRE 50/50 entre Samuel y vendedor
  */
 @Data
 @Builder

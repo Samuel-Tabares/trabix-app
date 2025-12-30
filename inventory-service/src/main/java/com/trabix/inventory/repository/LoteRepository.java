@@ -26,6 +26,9 @@ public interface LoteRepository extends JpaRepository<Lote, Long> {
     // Lote activo actual de un usuario (el más reciente)
     Optional<Lote> findFirstByUsuarioIdAndEstadoOrderByFechaCreacionDesc(Long usuarioId, EstadoLote estado);
 
+    // Lote activo más antiguo (FIFO)
+    Optional<Lote> findFirstByUsuarioIdAndEstadoOrderByFechaCreacionAsc(Long usuarioId, EstadoLote estado);
+
     // Lotes por estado
     Page<Lote> findByEstado(EstadoLote estado, Pageable pageable);
 

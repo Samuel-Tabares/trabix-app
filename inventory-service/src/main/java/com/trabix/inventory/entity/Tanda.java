@@ -4,16 +4,26 @@ import com.trabix.common.enums.EstadoTanda;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * Entidad Tanda - una división de un lote.
- * Cada lote tiene 3 tandas: 40%, 30%, 30%.
+ * 
+ * CORRECCIONES:
+ * - @Version para control de concurrencia optimista
+ * - excedenteDinero: Dinero sobrante de la tanda anterior
+ * - excedenteTrabix: Trabix sobrantes de la tanda anterior (se agregan al stock)
+ * - totalRecaudado: Acumulado de ventas aprobadas para calcular triggers
+ * 
+ * Distribución de tandas:
+ * - < 50 TRABIX = 2 tandas (50% / 50%)
+ * - >= 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
  * 
  * Flujo:
  * 1. PENDIENTE - Creada pero no liberada
  * 2. LIBERADA - Stock entregado al vendedor
- * 3. EN_CUADRE - Stock <= 20%, esperando transferencia
+ * 3. EN_CUADRE - Stock <= umbral%, esperando transferencia
  * 4. CUADRADA - Cuadre exitoso, siguiente tanda liberada
  */
 @Entity
@@ -27,6 +37,9 @@ public class Tanda {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lote_id", nullable = false)
@@ -52,6 +65,29 @@ public class Tanda {
     @Column(nullable = false, length = 20)
     private EstadoTanda estado;
 
+    // === EXCEDENTES DE TANDA ANTERIOR ===
+
+    /**
+     * Excedente de dinero de la tanda anterior.
+     * Se usa como saldo inicial para esta tanda.
+     */
+    @Column(name = "excedente_dinero", precision = 12, scale = 2)
+    private BigDecimal excedenteDinero;
+
+    /**
+     * Excedente de trabix de la tanda anterior.
+     * Se agregan al stockActual de esta tanda.
+     */
+    @Column(name = "excedente_trabix")
+    private Integer excedenteTrabix;
+
+    /**
+     * Total recaudado en esta tanda (ventas aprobadas).
+     * Se usa para calcular triggers de cuadre.
+     */
+    @Column(name = "total_recaudado", precision = 12, scale = 2)
+    private BigDecimal totalRecaudado;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -71,6 +107,15 @@ public class Tanda {
         if (stockActual == null) {
             stockActual = 0;
         }
+        if (excedenteDinero == null) {
+            excedenteDinero = BigDecimal.ZERO;
+        }
+        if (excedenteTrabix == null) {
+            excedenteTrabix = 0;
+        }
+        if (totalRecaudado == null) {
+            totalRecaudado = BigDecimal.ZERO;
+        }
     }
 
     @PreUpdate
@@ -82,8 +127,8 @@ public class Tanda {
      * Libera la tanda: entrega el stock al vendedor.
      */
     public void liberar() {
-        this.stockEntregado = this.cantidadAsignada;
-        this.stockActual = this.cantidadAsignada;
+        this.stockEntregado = this.cantidadAsignada + (this.excedenteTrabix != null ? this.excedenteTrabix : 0);
+        this.stockActual = this.stockEntregado;
         this.fechaLiberacion = LocalDateTime.now();
         this.estado = EstadoTanda.LIBERADA;
     }
@@ -99,6 +144,43 @@ public class Tanda {
     }
 
     /**
+     * Restaura stock (cuando se rechaza una venta).
+     */
+    public void restaurarStock(int cantidad) {
+        this.stockActual += cantidad;
+    }
+
+    /**
+     * Agrega excedente de trabix de la tanda anterior al stock.
+     */
+    public void agregarExcedenteTrabix(int cantidad) {
+        if (this.excedenteTrabix == null) {
+            this.excedenteTrabix = 0;
+        }
+        this.excedenteTrabix += cantidad;
+    }
+
+    /**
+     * Registra excedente de dinero de la tanda anterior.
+     */
+    public void agregarExcedenteDinero(BigDecimal monto) {
+        if (this.excedenteDinero == null) {
+            this.excedenteDinero = BigDecimal.ZERO;
+        }
+        this.excedenteDinero = this.excedenteDinero.add(monto);
+    }
+
+    /**
+     * Agrega al total recaudado (cuando se aprueba una venta).
+     */
+    public void agregarRecaudado(BigDecimal monto) {
+        if (this.totalRecaudado == null) {
+            this.totalRecaudado = BigDecimal.ZERO;
+        }
+        this.totalRecaudado = this.totalRecaudado.add(monto);
+    }
+
+    /**
      * Calcula el porcentaje de stock restante.
      */
     public double getPorcentajeStockRestante() {
@@ -107,7 +189,7 @@ public class Tanda {
     }
 
     /**
-     * Verifica si se debe disparar el cuadre (stock <= 20%).
+     * Verifica si se debe disparar el cuadre (stock <= porcentaje).
      */
     public boolean debeTriggerCuadre(int porcentajeTrigger) {
         return estado == EstadoTanda.LIBERADA && getPorcentajeStockRestante() <= porcentajeTrigger;

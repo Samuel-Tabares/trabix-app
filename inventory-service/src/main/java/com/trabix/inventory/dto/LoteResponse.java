@@ -14,6 +14,10 @@ import java.util.List;
 
 /**
  * Respuesta con datos de un lote.
+ * 
+ * CORRECCIONES:
+ * - Información de inversiones 50/50
+ * - Flags de recuperación de inversión
  */
 @Data
 @Builder
@@ -26,10 +30,46 @@ public class LoteResponse {
     private VendedorInfo vendedor;
     private Integer cantidadTotal;
     private BigDecimal costoPercibidoUnitario;
-    private BigDecimal inversionTotal; // cantidad * costoPercibido
     private ModeloNegocio modelo;
     private EstadoLote estado;
     private LocalDateTime fechaCreacion;
+    
+    // === INVERSIONES (siempre 50/50) ===
+    
+    /**
+     * Inversión total del lote (cantidad × costo percibido).
+     */
+    private BigDecimal inversionTotal;
+    
+    /**
+     * Inversión de Samuel (siempre 50% del lote).
+     */
+    private BigDecimal inversionSamuel;
+    
+    /**
+     * Inversión del vendedor (siempre 50% del lote).
+     */
+    private BigDecimal inversionVendedor;
+    
+    /**
+     * true si Samuel ya recuperó su inversión.
+     */
+    private Boolean inversionSamuelRecuperada;
+    
+    /**
+     * true si el vendedor ya recuperó su inversión.
+     */
+    private Boolean inversionVendedorRecuperada;
+    
+    /**
+     * true si ya hay ganancias (ambas inversiones recuperadas).
+     */
+    private Boolean hayGanancias;
+    
+    /**
+     * Porcentaje de ganancia del vendedor (60 o 50 según modelo).
+     */
+    private Integer porcentajeGananciaVendedor;
     
     // Resumen de stock
     private Integer stockEntregado;
@@ -49,5 +89,6 @@ public class LoteResponse {
         private String nombre;
         private String cedula;
         private String nivel;
+        private String modeloNegocio;
     }
 }

@@ -15,19 +15,30 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Servicio para calcular cuadres según el modelo de negocio.
+ * Servicio para calcular cuadres según el modelo de negocio TRABIX.
  * 
- * MODELO DE INVERSIÓN:
- * - N2 (MODELO_60_40): Vendedor pone 60%, Samuel 40%
- * - N3+ (MODELO_50_50): Vendedor pone 50%, Samuel 50%
+ * ═══════════════════════════════════════════════════════════════════
+ * MODELO DE INVERSIÓN (SIEMPRE IGUAL):
+ * - Samuel pone 50%, Vendedor pone 50%
+ * - NO depende del nivel ni del modelo
+ * ═══════════════════════════════════════════════════════════════════
  * 
- * MODELO DE GANANCIAS:
- * - MODELO_60_40: 60% vendedor, 40% Samuel
- * - MODELO_50_50 CASCADA: 50% vendedor, 50% sube en cascada
+ * MODELO DE GANANCIAS (depende del nivel):
+ * - MODELO_60_40 (N2): 60% vendedor, 40% Samuel
+ * - MODELO_50_50 (N3+): 50% vendedor, 50% sube a Samuel (él distribuye cascada)
  * 
- * TANDAS:
- * - 2 tandas (< 50 TRABIX): T1 = inversión Samuel, T2 = inversión vendedor + ganancias
- * - 3 tandas (>= 50 TRABIX): T1 = inversión Samuel, T2 = inversión vendedor, T3 = ganancias
+ * ═══════════════════════════════════════════════════════════════════
+ * TANDAS (2 o 3 según cantidad):
+ * 
+ * 2 TANDAS (≤50 TRABIX):
+ * - T1: Recuperar inversión Samuel (trigger: recaudado >= inversión Samuel)
+ * - T2: Recuperar inversión vendedor + Ganancias (trigger: stock ≤20%)
+ * 
+ * 3 TANDAS (>50 TRABIX):
+ * - T1: Recuperar inversión Samuel (trigger: recaudado >= inversión Samuel)
+ * - T2: Recuperar inversión vendedor + Ganancias excedentes (trigger: stock ≤10%)
+ * - T3: Ganancias puras (trigger: stock ≤20%)
+ * ═══════════════════════════════════════════════════════════════════
  */
 @Slf4j
 @Service
@@ -83,17 +94,23 @@ public class CalculadorCuadreService {
             // 2 tandas: T2 = inversión vendedor + ganancias
             return calcularCuadreT2_DosTandas(builder, lote, disponibleTotal, pasos);
         } else if (totalTandas == 3 && tanda.getNumero() == 2) {
-            // 3 tandas: T2 = inversión vendedor
-            return calcularCuadreInversionVendedor(builder, lote, disponibleTotal, pasos);
+            // 3 tandas: T2 = inversión vendedor + ganancias excedentes
+            return calcularCuadreT2_TresTandas(builder, lote, disponibleTotal, pasos);
         } else {
-            // T3 (o última tanda): ganancias puras
+            // T3 (última tanda en lotes de 3): ganancias puras
             return calcularCuadreGanancias(builder, lote, disponibleTotal, pasos);
         }
     }
 
     /**
-     * Tanda 1: Cuadre de inversión de Samuel.
-     * El vendedor debe transferir la inversión de Samuel.
+     * ═══════════════════════════════════════════════════════════════════
+     * TANDA 1: Cuadre de inversión de Samuel.
+     * 
+     * LÓGICA:
+     * 1. Disponible = Recaudado en T1
+     * 2. Vendedor transfiere la inversión de Samuel (50%)
+     * 3. Excedente pasa ÍNTEGRO a T2 (NO se usa para inversión vendedor aquí)
+     * ═══════════════════════════════════════════════════════════════════
      */
     private CalculoCuadreResponse calcularCuadreInversionSamuel(
             CalculoCuadreResponse.CalculoCuadreResponseBuilder builder,
@@ -106,32 +123,22 @@ public class CalculadorCuadreService {
         pasos.add("");
         pasos.add("═══ CUADRE TANDA 1: INVERSIÓN SAMUEL ═══");
         pasos.add(String.format("Inversión total del lote: $%s", formatMoney(inversionTotal)));
-        pasos.add(String.format("• Inversión Samuel (%d%%): $%s", 
-                lote.getPorcentajeInversionSamuel(), formatMoney(inversionSamuel)));
-        pasos.add(String.format("• Inversión vendedor (%d%%): $%s", 
-                lote.getPorcentajeInversionVendedor(), formatMoney(inversionVendedor)));
+        pasos.add(String.format("• Inversión Samuel (50%%): $%s", formatMoney(inversionSamuel)));
+        pasos.add(String.format("• Inversión vendedor (50%%): $%s (se recupera en T2)", formatMoney(inversionVendedor)));
 
         BigDecimal debeTransferir = inversionSamuel;
         BigDecimal excedente = BigDecimal.ZERO;
-        BigDecimal montoVendedor = BigDecimal.ZERO;
 
-        if (disponible.compareTo(debeTransferir) > 0) {
+        if (disponible.compareTo(debeTransferir) >= 0) {
+            // Hay suficiente para cubrir inversión de Samuel
             excedente = disponible.subtract(debeTransferir);
-            pasos.add(String.format("✨ Excedente después de inversión Samuel: $%s", formatMoney(excedente)));
-
-            // El excedente puede cubrir parte de la inversión del vendedor
-            if (excedente.compareTo(inversionVendedor) >= 0) {
-                montoVendedor = inversionVendedor;
-                excedente = excedente.subtract(inversionVendedor);
-                pasos.add(String.format("✅ Vendedor recupera toda su inversión: $%s", formatMoney(inversionVendedor)));
-                pasos.add(String.format("✨ Excedente restante: $%s", formatMoney(excedente)));
-            } else if (excedente.compareTo(BigDecimal.ZERO) > 0) {
-                montoVendedor = excedente;
-                pasos.add(String.format("📌 Vendedor recupera parcial: $%s de $%s", 
-                        formatMoney(excedente), formatMoney(inversionVendedor)));
-                excedente = BigDecimal.ZERO;
+            
+            if (excedente.compareTo(BigDecimal.ZERO) > 0) {
+                pasos.add(String.format("✅ Recaudado suficiente para inversión Samuel"));
+                pasos.add(String.format("✨ Excedente para T2: $%s", formatMoney(excedente)));
+                pasos.add("📌 Este excedente pasa a T2 para recuperar inversión del vendedor");
             }
-        } else if (disponible.compareTo(debeTransferir) < 0) {
+        } else {
             pasos.add(String.format("⚠️ ATENCIÓN: Disponible ($%s) < Inversión Samuel ($%s)", 
                     formatMoney(disponible), formatMoney(inversionSamuel)));
             pasos.add("El cuadre aún no puede completarse.");
@@ -139,48 +146,71 @@ public class CalculadorCuadreService {
 
         pasos.add("");
         pasos.add(String.format("💵 DEBE TRANSFERIR A SAMUEL: $%s", formatMoney(debeTransferir)));
+        pasos.add(String.format("👤 VENDEDOR SE QUEDA CON: $0 (aún debe recuperar su inversión en T2)"));
 
         return builder
                 .inversionSamuel(inversionSamuel)
                 .inversionVendedor(inversionVendedor)
                 .montoQueDebeTransferir(debeTransferir)
-                .montoParaVendedor(montoVendedor)
+                .montoParaVendedor(BigDecimal.ZERO) // En T1 vendedor no recibe nada
                 .excedenteResultante(excedente)
                 .pasosCalculo(pasos)
                 .build();
     }
 
     /**
-     * Tanda 2 en lotes de 2 tandas: Inversión vendedor + Ganancias.
+     * ═══════════════════════════════════════════════════════════════════
+     * TANDA 2 (en lotes de 2 tandas): Inversión vendedor + Ganancias.
+     * 
+     * LÓGICA:
+     * 1. Disponible = Recaudado T2 + Excedente T1
+     * 2. Primero: Vendedor recupera su inversión (50%)
+     * 3. Restante = Ganancias → se reparten según modelo (60/40 o 50/50)
+     * 4. Vendedor transfiere a Samuel su parte de ganancias
+     * ═══════════════════════════════════════════════════════════════════
      */
     private CalculoCuadreResponse calcularCuadreT2_DosTandas(
             CalculoCuadreResponse.CalculoCuadreResponseBuilder builder,
             Lote lote, BigDecimal disponible, List<String> pasos) {
 
         BigDecimal inversionVendedor = lote.getInversionVendedor();
+        int porcentajeGananciaSamuel = lote.getPorcentajeGananciaSamuel();
+        int porcentajeGananciaVendedor = lote.getPorcentajeGananciaVendedor();
 
         pasos.add("");
-        pasos.add("═══ CUADRE TANDA 2 (2 TANDAS): INVERSIÓN + GANANCIAS ═══");
+        pasos.add("═══ CUADRE TANDA 2 (FINAL): INVERSIÓN + GANANCIAS ═══");
         pasos.add(String.format("Inversión vendedor pendiente: $%s", formatMoney(inversionVendedor)));
+        pasos.add(String.format("Modelo ganancias: %d/%d", porcentajeGananciaVendedor, porcentajeGananciaSamuel));
 
-        BigDecimal restanteDespuesInversion;
         BigDecimal montoVendedor = BigDecimal.ZERO;
-        BigDecimal debeTransferir;
+        BigDecimal debeTransferir = BigDecimal.ZERO;
+        BigDecimal ganancias = BigDecimal.ZERO;
 
         if (disponible.compareTo(inversionVendedor) >= 0) {
-            // Vendedor recupera su inversión completa
+            // Vendedor recupera toda su inversión
             montoVendedor = inversionVendedor;
-            restanteDespuesInversion = disponible.subtract(inversionVendedor);
-            pasos.add(String.format("✅ Vendedor recupera inversión: $%s", formatMoney(inversionVendedor)));
-            pasos.add(String.format("💰 Restante para ganancias: $%s", formatMoney(restanteDespuesInversion)));
-
-            // Lo restante son ganancias, se reparten según modelo
-            if (restanteDespuesInversion.compareTo(BigDecimal.ZERO) > 0) {
-                return calcularGananciasConInversion(builder, lote, restanteDespuesInversion, 
-                        montoVendedor, pasos);
+            ganancias = disponible.subtract(inversionVendedor);
+            
+            pasos.add(String.format("✅ Vendedor recupera TODA su inversión: $%s", formatMoney(inversionVendedor)));
+            
+            if (ganancias.compareTo(BigDecimal.ZERO) > 0) {
+                pasos.add("");
+                pasos.add(String.format("💰 GANANCIAS GENERADAS: $%s", formatMoney(ganancias)));
+                pasos.add(String.format("📊 Distribución %d/%d:", porcentajeGananciaVendedor, porcentajeGananciaSamuel));
+                
+                // Calcular distribución de ganancias según modelo
+                BigDecimal gananciaSamuel = ganancias
+                        .multiply(BigDecimal.valueOf(porcentajeGananciaSamuel))
+                        .divide(CIEN, 0, RoundingMode.HALF_UP);
+                BigDecimal gananciaVendedor = ganancias.subtract(gananciaSamuel);
+                
+                montoVendedor = montoVendedor.add(gananciaVendedor);
+                debeTransferir = gananciaSamuel;
+                
+                pasos.add(String.format("  • Vendedor (%d%%): $%s", porcentajeGananciaVendedor, formatMoney(gananciaVendedor)));
+                pasos.add(String.format("  • Samuel (%d%%): $%s", porcentajeGananciaSamuel, formatMoney(gananciaSamuel)));
             } else {
-                pasos.add("Sin ganancias adicionales.");
-                debeTransferir = BigDecimal.ZERO;
+                pasos.add("Sin ganancias adicionales (solo recuperó inversión)");
             }
         } else {
             // No alcanza para inversión completa
@@ -188,11 +218,19 @@ public class CalculadorCuadreService {
             BigDecimal faltante = inversionVendedor.subtract(disponible);
             pasos.add(String.format("⚠️ Vendedor recupera parcial: $%s", formatMoney(disponible)));
             pasos.add(String.format("📌 Falta por recuperar: $%s", formatMoney(faltante)));
-            debeTransferir = BigDecimal.ZERO;
+            pasos.add("❌ Sin ganancias (no recuperó inversión completa)");
         }
+
+        pasos.add("");
+        pasos.add(String.format("💵 DEBE TRANSFERIR A SAMUEL: $%s", formatMoney(debeTransferir)));
+        pasos.add(String.format("👤 TOTAL VENDEDOR: $%s", formatMoney(montoVendedor)));
+        pasos.add("🎉 ¡LOTE COMPLETADO!");
 
         return builder
                 .inversionVendedor(inversionVendedor)
+                .gananciasBrutas(ganancias)
+                .porcentajeVendedor(BigDecimal.valueOf(porcentajeGananciaVendedor))
+                .porcentajeSamuel(BigDecimal.valueOf(porcentajeGananciaSamuel))
                 .montoQueDebeTransferir(debeTransferir)
                 .montoParaVendedor(montoVendedor)
                 .excedenteResultante(BigDecimal.ZERO)
@@ -201,14 +239,17 @@ public class CalculadorCuadreService {
     }
 
     /**
-     * Tanda 2 en lotes de 3 tandas: Inversión vendedor + Ganancias.
+     * ═══════════════════════════════════════════════════════════════════
+     * TANDA 2 (en lotes de 3 tandas): Inversión vendedor + Ganancias excedentes.
      * 
      * LÓGICA:
-     * 1. Disponible = Excedente cuadre 1 + Recaudado tanda 2
-     * 2. Primero: Vendedor recupera su inversión
-     * 3. Después: Lo restante = GANANCIAS → transfiere 40% o 50% según modelo
+     * 1. Disponible = Recaudado T2 + Excedente T1
+     * 2. Primero: Vendedor recupera su inversión (50%)
+     * 3. Excedente sobre inversión = GANANCIAS (se reparten según modelo)
+     * 4. Vendedor transfiere a Samuel su parte de ganancias
+     * ═══════════════════════════════════════════════════════════════════
      */
-    private CalculoCuadreResponse calcularCuadreInversionVendedor(
+    private CalculoCuadreResponse calcularCuadreT2_TresTandas(
             CalculoCuadreResponse.CalculoCuadreResponseBuilder builder,
             Lote lote, BigDecimal disponible, List<String> pasos) {
 
@@ -219,6 +260,7 @@ public class CalculadorCuadreService {
         pasos.add("");
         pasos.add("═══ CUADRE TANDA 2: INVERSIÓN + GANANCIAS ═══");
         pasos.add(String.format("Inversión vendedor pendiente: $%s", formatMoney(inversionVendedor)));
+        pasos.add(String.format("Modelo ganancias: %d/%d", porcentajeGananciaVendedor, porcentajeGananciaSamuel));
 
         BigDecimal montoVendedor = BigDecimal.ZERO;
         BigDecimal debeTransferir = BigDecimal.ZERO;
@@ -234,7 +276,8 @@ public class CalculadorCuadreService {
             
             if (ganancias.compareTo(BigDecimal.ZERO) > 0) {
                 pasos.add("");
-                pasos.add(String.format("💰 Ganancias generadas: $%s", formatMoney(ganancias)));
+                pasos.add(String.format("💰 GANANCIAS GENERADAS: $%s", formatMoney(ganancias)));
+                pasos.add(String.format("📊 Distribución %d/%d:", porcentajeGananciaVendedor, porcentajeGananciaSamuel));
                 
                 // Calcular distribución de ganancias según modelo
                 BigDecimal gananciaSamuel = ganancias
@@ -245,10 +288,10 @@ public class CalculadorCuadreService {
                 montoVendedor = montoVendedor.add(gananciaVendedor);
                 debeTransferir = gananciaSamuel;
                 
-                pasos.add(String.format("📊 Distribución ganancias (%d/%d):", 
-                        porcentajeGananciaVendedor, porcentajeGananciaSamuel));
                 pasos.add(String.format("  • Vendedor (%d%%): $%s", porcentajeGananciaVendedor, formatMoney(gananciaVendedor)));
                 pasos.add(String.format("  • Samuel (%d%%): $%s", porcentajeGananciaSamuel, formatMoney(gananciaSamuel)));
+            } else {
+                pasos.add("Sin ganancias adicionales en esta tanda");
             }
         } else {
             // No alcanza para inversión completa
@@ -264,9 +307,10 @@ public class CalculadorCuadreService {
             pasos.add(String.format("💵 DEBE TRANSFERIR (%d%% ganancias): $%s", 
                     porcentajeGananciaSamuel, formatMoney(debeTransferir)));
         } else {
-            pasos.add("💵 NADA QUE TRANSFERIR (aún recuperando inversión)");
+            pasos.add("💵 NADA QUE TRANSFERIR (solo recuperación de inversión)");
         }
         pasos.add(String.format("👤 TOTAL VENDEDOR: $%s", formatMoney(montoVendedor)));
+        pasos.add("✅ Con cuadre exitoso se libera Tanda 3 (ganancias puras)");
 
         return builder
                 .inversionVendedor(inversionVendedor)
@@ -281,7 +325,14 @@ public class CalculadorCuadreService {
     }
 
     /**
-     * Tanda 3 (o última): Ganancias puras.
+     * ═══════════════════════════════════════════════════════════════════
+     * TANDA 3 (o última): Ganancias puras.
+     * 
+     * LÓGICA:
+     * 1. Todo lo recaudado = GANANCIAS
+     * 2. Se reparte según modelo (60/40 o 50/50)
+     * 3. Vendedor transfiere la parte de Samuel
+     * ═══════════════════════════════════════════════════════════════════
      */
     private CalculoCuadreResponse calcularCuadreGanancias(
             CalculoCuadreResponse.CalculoCuadreResponseBuilder builder,
@@ -298,62 +349,28 @@ public class CalculadorCuadreService {
     }
 
     /**
-     * Calcula ganancias con inversión ya cubierta (para T2 de 2 tandas).
-     */
-    private CalculoCuadreResponse calcularGananciasConInversion(
-            CalculoCuadreResponse.CalculoCuadreResponseBuilder builder,
-            Lote lote, BigDecimal ganancias, BigDecimal inversionRecuperada,
-            List<String> pasos) {
-
-        pasos.add("");
-        pasos.add("═══ DISTRIBUCIÓN DE GANANCIAS ═══");
-        pasos.add(String.format("Ganancias a repartir: $%s", formatMoney(ganancias)));
-
-        int porcentajeVendedor = lote.getPorcentajeGananciaVendedor();
-        int porcentajeSamuel = lote.getPorcentajeGananciaSamuel();
-
-        BigDecimal gananciaVendedor = ganancias
-                .multiply(BigDecimal.valueOf(porcentajeVendedor))
-                .divide(CIEN, 0, RoundingMode.HALF_UP);
-        BigDecimal gananciaSamuel = ganancias.subtract(gananciaVendedor);
-
-        pasos.add(String.format("• Vendedor (%d%%): $%s", porcentajeVendedor, formatMoney(gananciaVendedor)));
-        pasos.add(String.format("• Samuel (%d%%): $%s", porcentajeSamuel, formatMoney(gananciaSamuel)));
-
-        BigDecimal totalVendedor = inversionRecuperada.add(gananciaVendedor);
-        pasos.add("");
-        pasos.add(String.format("💵 DEBE TRANSFERIR A SAMUEL: $%s", formatMoney(gananciaSamuel)));
-        pasos.add(String.format("👤 TOTAL VENDEDOR (inversión + ganancia): $%s", formatMoney(totalVendedor)));
-
-        return builder
-                .gananciasBrutas(ganancias)
-                .porcentajeVendedor(BigDecimal.valueOf(porcentajeVendedor))
-                .porcentajeSamuel(BigDecimal.valueOf(porcentajeSamuel))
-                .montoQueDebeTransferir(gananciaSamuel)
-                .montoParaVendedor(totalVendedor)
-                .excedenteResultante(BigDecimal.ZERO)
-                .pasosCalculo(pasos)
-                .build();
-    }
-
-    /**
      * Modelo 60/40: 60% vendedor, 40% Samuel.
      */
     private CalculoCuadreResponse calcularGanancias60_40(
             CalculoCuadreResponse.CalculoCuadreResponseBuilder builder,
             Lote lote, BigDecimal ganancias, List<String> pasos) {
 
-        pasos.add("Modelo: 60/40 (N2 directo)");
+        pasos.add("Modelo: 60/40 (N2 directo con Samuel)");
+        pasos.add(String.format("💰 Ganancias totales: $%s", formatMoney(ganancias)));
 
         BigDecimal montoVendedor = ganancias
                 .multiply(new BigDecimal("0.60"))
                 .setScale(0, RoundingMode.HALF_UP);
         BigDecimal montoSamuel = ganancias.subtract(montoVendedor);
 
-        pasos.add(String.format("• Vendedor (60%%): $%s", formatMoney(montoVendedor)));
-        pasos.add(String.format("• Samuel (40%%): $%s", formatMoney(montoSamuel)));
+        pasos.add("");
+        pasos.add("📊 Distribución:");
+        pasos.add(String.format("  • Vendedor (60%%): $%s", formatMoney(montoVendedor)));
+        pasos.add(String.format("  • Samuel (40%%): $%s", formatMoney(montoSamuel)));
         pasos.add("");
         pasos.add(String.format("💵 DEBE TRANSFERIR (40%%): $%s", formatMoney(montoSamuel)));
+        pasos.add(String.format("👤 VENDEDOR SE QUEDA CON (60%%): $%s", formatMoney(montoVendedor)));
+        pasos.add("🎉 ¡LOTE COMPLETADO!");
 
         return builder
                 .gananciasBrutas(ganancias)
@@ -367,14 +384,21 @@ public class CalculadorCuadreService {
     }
 
     /**
-     * Modelo 50/50 Cascada: 50% vendedor, 50% sube en cascada.
-     * El vendedor transfiere el 50% a Samuel, quien distribuye en cascada.
+     * ═══════════════════════════════════════════════════════════════════
+     * Modelo 50/50 Cascada: 50% vendedor, 50% sube a Samuel.
+     * 
+     * LÓGICA:
+     * 1. Vendedor se queda con 50%
+     * 2. Vendedor transfiere 50% a Samuel
+     * 3. Samuel después distribuye en cascada (esto es informativo)
+     * ═══════════════════════════════════════════════════════════════════
      */
     private CalculoCuadreResponse calcularGananciasCascada(
             CalculoCuadreResponse.CalculoCuadreResponseBuilder builder,
             Lote lote, BigDecimal ganancias, List<String> pasos) {
 
         pasos.add("Modelo: 50/50 Cascada (N3+)");
+        pasos.add(String.format("💰 Ganancias totales: $%s", formatMoney(ganancias)));
 
         Usuario vendedor = lote.getUsuario();
         List<CalculoCuadreResponse.DistribucionNivel> distribucion = new ArrayList<>();
@@ -393,15 +417,16 @@ public class CalculadorCuadreService {
                 .explicacion("50% directo (vendedor)")
                 .build());
 
-        pasos.add(String.format("👤 %s (%s): $%s (50%%)", 
-                vendedor.getNombre(), vendedor.getNivel(), formatMoney(montoVendedor)));
-
-        // El 50% que sube se distribuye en cascada por Samuel
-        pasos.add(String.format("⬆️ Samuel recibe para cascada: $%s (50%%)", formatMoney(montoSamuel)));
         pasos.add("");
-        pasos.add("📊 Samuel distribuye en cascada:");
+        pasos.add("📊 Distribución:");
+        pasos.add(String.format("  👤 %s (%s): $%s (50%%)", 
+                vendedor.getNombre(), vendedor.getNivel(), formatMoney(montoVendedor)));
+        pasos.add(String.format("  ⬆️ Samuel recibe: $%s (50%%)", formatMoney(montoSamuel)));
 
-        // Calcular distribución cascada (informativo)
+        // Calcular distribución cascada (informativo - Samuel la hace después)
+        pasos.add("");
+        pasos.add("📌 Samuel distribuirá en cascada:");
+
         Usuario actual = vendedor.getReclutador();
         BigDecimal subiendo = montoSamuel;
 
@@ -419,13 +444,13 @@ public class CalculadorCuadreService {
                     .explicacion("50% de lo que sube")
                     .build());
 
-            pasos.add(String.format("  ⬆️ %s (%s): $%s", 
+            pasos.add(String.format("    ⬆️ %s (%s): $%s", 
                     actual.getNombre(), actual.getNivel(), formatMoney(montoNivel)));
 
             actual = actual.getReclutador();
         }
 
-        // Lo que queda llega a Samuel
+        // Lo que queda llega a Samuel (N1)
         Usuario samuel = usuarioRepository.findAdmin().orElse(null);
         if (samuel != null && subiendo.compareTo(BigDecimal.ZERO) > 0) {
             distribucion.add(CalculoCuadreResponse.DistribucionNivel.builder()
@@ -434,12 +459,13 @@ public class CalculadorCuadreService {
                     .monto(subiendo)
                     .explicacion("Resto que llega al tope")
                     .build());
-            pasos.add(String.format("  ⬆️ Samuel (N1): $%s", formatMoney(subiendo)));
+            pasos.add(String.format("    ⬆️ Samuel (N1): $%s", formatMoney(subiendo)));
         }
 
         pasos.add("");
-        pasos.add(String.format("💵 DEBE TRANSFERIR (50%%): $%s", formatMoney(montoSamuel)));
+        pasos.add(String.format("💵 DEBE TRANSFERIR A SAMUEL (50%%): $%s", formatMoney(montoSamuel)));
         pasos.add(String.format("👤 VENDEDOR SE QUEDA CON (50%%): $%s", formatMoney(montoVendedor)));
+        pasos.add("🎉 ¡LOTE COMPLETADO!");
 
         return builder
                 .gananciasBrutas(ganancias)
@@ -455,6 +481,7 @@ public class CalculadorCuadreService {
 
     /**
      * Verifica si hay suficiente recaudado para cuadrar Tanda 1.
+     * T1 se cuadra por MONTO, no por porcentaje de stock.
      */
     @Transactional(readOnly = true)
     public boolean puedeHacerCuadreTanda1(Tanda tanda) {
@@ -463,13 +490,10 @@ public class CalculadorCuadreService {
         BigDecimal recaudado = ventaRepository.sumarRecaudadoPorTanda(tanda.getId());
         if (recaudado == null) recaudado = BigDecimal.ZERO;
         
-        BigDecimal excedenteAnterior = cuadreRepository.obtenerUltimoExcedente(tanda.getLote().getId())
-                .orElse(BigDecimal.ZERO);
-        
-        BigDecimal disponible = recaudado.add(excedenteAnterior);
+        // En T1 no hay excedente anterior (es la primera tanda)
         BigDecimal inversionSamuel = tanda.getLote().getInversionSamuel();
         
-        return disponible.compareTo(inversionSamuel) >= 0;
+        return recaudado.compareTo(inversionSamuel) >= 0;
     }
 
     private String formatMoney(BigDecimal amount) {

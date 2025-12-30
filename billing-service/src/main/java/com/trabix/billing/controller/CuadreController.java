@@ -21,6 +21,13 @@ import java.util.Map;
 
 /**
  * Controlador REST para gestión de cuadres.
+ * 
+ * Endpoints principales:
+ * - POST /cuadres/generar - Genera un cuadre para una tanda
+ * - POST /cuadres/{id}/confirmar - Confirma un cuadre (admin recibió dinero)
+ * - GET /cuadres/pendientes - Lista cuadres pendientes
+ * - GET /cuadres/detectar - Detecta tandas que requieren cuadre
+ * - GET /cuadres/alertas - Detecta alertas de T1 con stock bajo
  */
 @RestController
 @RequestMapping("/cuadres")
@@ -31,6 +38,9 @@ public class CuadreController {
 
     // === Endpoints para ADMIN ===
 
+    /**
+     * Genera un cuadre para una tanda.
+     */
     @PostMapping("/generar")
     public ResponseEntity<ApiResponse<CuadreResponse>> generarCuadre(
             @Valid @RequestBody GenerarCuadreRequest request) {
@@ -40,6 +50,9 @@ public class CuadreController {
                 .body(ApiResponse.ok(response, "Cuadre generado. Esperando transferencia."));
     }
 
+    /**
+     * Confirma un cuadre (admin recibió el dinero).
+     */
     @PostMapping("/{id}/confirmar")
     public ResponseEntity<ApiResponse<CuadreResponse>> confirmarCuadre(
             @PathVariable Long id,
@@ -48,6 +61,9 @@ public class CuadreController {
         return ResponseEntity.ok(ApiResponse.ok(response, "Cuadre confirmado exitosamente."));
     }
 
+    /**
+     * Lista cuadres pendientes con paginación.
+     */
     @GetMapping("/pendientes")
     public ResponseEntity<ApiResponse<PaginaResponse<CuadreResponse>>> listarPendientes(
             @RequestParam(defaultValue = "0") int pagina,
@@ -59,6 +75,9 @@ public class CuadreController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    /**
+     * Cuenta cuadres pendientes y en proceso.
+     */
     @GetMapping("/pendientes/count")
     public ResponseEntity<ApiResponse<Map<String, Long>>> contarPendientes() {
         ResumenCuadresResponse resumen = cuadreService.obtenerResumen();
@@ -68,38 +87,61 @@ public class CuadreController {
         )));
     }
 
+    /**
+     * Obtiene resumen general de cuadres.
+     */
     @GetMapping("/resumen")
     public ResponseEntity<ApiResponse<ResumenCuadresResponse>> obtenerResumen() {
         ResumenCuadresResponse response = cuadreService.obtenerResumen();
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    /**
+     * Detecta tandas que requieren cuadre.
+     * 
+     * - Tanda 1: Cuando recaudado >= inversión Samuel
+     * - Tandas 2+: Cuando stock <= porcentaje de trigger
+     */
     @GetMapping("/detectar")
     public ResponseEntity<ApiResponse<List<CuadreResponse>>> detectarTandasParaCuadre() {
         List<CuadreResponse> response = cuadreService.detectarTandasParaCuadre();
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    /**
+     * Detecta alertas de Tanda 1 con stock bajo pero sin suficiente recaudado.
+     * Solo informativo - T1 se cuadra por monto, no por stock.
+     */
     @GetMapping("/alertas")
     public ResponseEntity<ApiResponse<List<CuadreResponse>>> obtenerAlertas() {
         List<CuadreResponse> response = cuadreService.detectarAlertas();
-        return ResponseEntity.ok(ApiResponse.ok(response, "Alertas de Tanda 1 con stock bajo pero sin recaudado suficiente"));
+        return ResponseEntity.ok(ApiResponse.ok(response, 
+                "Alertas de Tanda 1 con stock bajo pero sin recaudado suficiente"));
     }
 
     // === Endpoints de consulta ===
 
+    /**
+     * Obtiene un cuadre por ID.
+     */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<CuadreResponse>> obtenerCuadre(@PathVariable Long id) {
         CuadreResponse response = cuadreService.obtenerCuadre(id);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    /**
+     * Obtiene el texto de WhatsApp de un cuadre.
+     */
     @GetMapping("/{id}/whatsapp")
     public ResponseEntity<ApiResponse<Map<String, String>>> obtenerTextoWhatsApp(@PathVariable Long id) {
         String texto = cuadreService.obtenerTextoWhatsApp(id);
         return ResponseEntity.ok(ApiResponse.ok(Map.of("texto", texto)));
     }
 
+    /**
+     * Obtiene el detalle de cálculo de un cuadre (para una tanda).
+     */
     @GetMapping("/{id}/calculo")
     public ResponseEntity<ApiResponse<CalculoCuadreResponse>> obtenerDetalleCalculo(@PathVariable Long id) {
         CalculoCuadreResponse response = cuadreService.obtenerDetalleCalculo(id);
@@ -108,6 +150,9 @@ public class CuadreController {
 
     // === Endpoints por lote ===
 
+    /**
+     * Lista cuadres de un lote específico.
+     */
     @GetMapping("/lote/{loteId}")
     public ResponseEntity<ApiResponse<List<CuadreResponse>>> cuadresDeLote(@PathVariable Long loteId) {
         List<CuadreResponse> response = cuadreService.listarCuadresDeLote(loteId);
@@ -116,12 +161,18 @@ public class CuadreController {
 
     // === Endpoints por usuario ===
 
+    /**
+     * Lista cuadres de un usuario específico.
+     */
     @GetMapping("/usuario/{usuarioId}")
     public ResponseEntity<ApiResponse<List<CuadreResponse>>> cuadresDeUsuario(@PathVariable Long usuarioId) {
         List<CuadreResponse> response = cuadreService.listarCuadresDeUsuario(usuarioId);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    /**
+     * Lista cuadres del usuario autenticado.
+     */
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<List<CuadreResponse>>> misCuadres(
             @AuthenticationPrincipal Usuario usuario) {

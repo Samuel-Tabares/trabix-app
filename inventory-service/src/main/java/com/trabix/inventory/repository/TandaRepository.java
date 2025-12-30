@@ -32,11 +32,11 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
         WHERE l.usuario.id = :usuarioId 
         AND l.estado = 'ACTIVO' 
         AND t.estado = 'LIBERADA'
-        ORDER BY t.numero ASC
+        ORDER BY l.fechaCreacion ASC, t.numero ASC
         """)
     List<Tanda> findTandasActivasDeUsuario(@Param("usuarioId") Long usuarioId);
 
-    // Tanda actual para vender (primera liberada con stock > 0)
+    // Tanda actual para vender (primera liberada con stock > 0, FIFO)
     @Query("""
         SELECT t FROM Tanda t 
         JOIN t.lote l 
@@ -44,11 +44,11 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
         AND l.estado = 'ACTIVO' 
         AND t.estado = 'LIBERADA' 
         AND t.stockActual > 0
-        ORDER BY t.numero ASC
+        ORDER BY l.fechaCreacion ASC, t.numero ASC
         """)
     Optional<Tanda> findTandaActualParaVenta(@Param("usuarioId") Long usuarioId);
 
-    // Tandas que requieren cuadre (stock <= 20%)
+    // Tandas que requieren cuadre (stock <= porcentaje)
     @Query("""
         SELECT t FROM Tanda t 
         WHERE t.estado = 'LIBERADA' 
@@ -65,4 +65,7 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
         AND t.estado = 'LIBERADA'
         """)
     int sumarStockActualUsuario(@Param("usuarioId") Long usuarioId);
+
+    // Contar tandas de un lote
+    int countByLoteId(Long loteId);
 }

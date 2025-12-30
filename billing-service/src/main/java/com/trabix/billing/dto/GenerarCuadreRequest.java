@@ -18,5 +18,6 @@ public class GenerarCuadreRequest {
     @NotNull(message = "El ID de la tanda es requerido")
     private Long tandaId;
 
+    /** Si es true, ignora validaciones de trigger */
     private Boolean forzar = false;
 }

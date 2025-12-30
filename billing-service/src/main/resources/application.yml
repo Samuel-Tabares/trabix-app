@@ -24,10 +24,24 @@ spring:
 jwt:
   secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits}
 
-# Configuración de cuadres
+# Configuración de cuadres TRABIX
+# ═══════════════════════════════════════════════════════════════════
+# MODELO DE NEGOCIO:
+# - Inversión: Siempre 50/50 (Samuel y vendedor)
+# - Ganancias: 60/40 (N2) o 50/50 cascada (N3+)
+# 
+# TRIGGERS:
+# - T1: Por monto (recaudado >= inversión Samuel)
+# - T2 (2 tandas): Stock <= 20%
+# - T2 (3 tandas): Stock <= 10%
+# - T3: Stock <= 20%
+# ═══════════════════════════════════════════════════════════════════
 trabix:
+  # Porcentaje de stock para trigger de cuadre (T2/T3)
   trigger-cuadre-porcentaje: 20
+  # Si es true, genera cuadres automáticamente cuando se detecta trigger
   cuadre-automatico: false
+  # Costo percibido por unidad de TRABIX
   costo-percibido-unitario: 2400
 
 # Logging

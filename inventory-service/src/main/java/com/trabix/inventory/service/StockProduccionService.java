@@ -21,7 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -238,14 +237,13 @@ public class StockProduccionService {
     @Transactional
     public void entregarStockAVendedor(Tanda tanda, Usuario usuario) {
         StockProduccion stock = obtenerOCrearStock();
-        int cantidad = tanda.getCantidadAsignada();
+        int cantidad = tanda.getStockEntregado(); // Usa stockEntregado que incluye excedentes
 
         // Verificar si hay stock suficiente
         if (cantidad > stock.getStockDisponible()) {
             log.warn("⚠️ DÉFICIT: Se liberó tanda pero no hay stock suficiente. " +
                     "Necesario: {}, Disponible: {}", cantidad, stock.getStockDisponible());
             // No lanzamos excepción porque el sistema permite déficit
-            // Solo entregamos lo que hay o marcamos como entrega pendiente
         }
 
         // Reducir stock disponible (puede quedar en 0 o ya estaba en 0)

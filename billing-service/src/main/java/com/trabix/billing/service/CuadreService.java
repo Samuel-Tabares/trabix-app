@@ -23,20 +23,29 @@ import java.util.stream.Collectors;
 /**
  * Servicio principal para gestión de cuadres.
  * 
- * LÓGICA DE CUADRES:
+ * ═══════════════════════════════════════════════════════════════════
+ * LÓGICA DE CUADRES TRABIX:
+ * ═══════════════════════════════════════════════════════════════════
  * 
  * TANDA 1 (Inversión Samuel):
+ * - Trigger: Recaudado >= Inversión de Samuel (50%)
  * - NO se cuadra por porcentaje de stock
- * - Se cuadra cuando recaudado >= inversión de Samuel
  * - 20% stock = solo alerta informativa
+ * - Excedente pasa íntegro a T2
  * 
- * TANDA 2:
- * - En lotes de 2 tandas: 20% stock = trigger (inversión vendedor + ganancias)
- * - En lotes de 3 tandas: 10% stock = trigger (inversión vendedor)
+ * TANDA 2 (con 2 tandas totales):
+ * - Trigger: Stock ≤ 20%
+ * - Recupera inversión vendedor (50%) + Ganancias
+ * 
+ * TANDA 2 (con 3 tandas totales):
+ * - Trigger: Stock ≤ 10%
+ * - Recupera inversión vendedor (50%) + Ganancias excedentes
  * 
  * TANDA 3:
- * - 20% stock = trigger (ganancias puras)
- * - stock = 0 → mini-cuadre final
+ * - Trigger: Stock ≤ 20%
+ * - Todo es ganancia pura
+ * 
+ * ═══════════════════════════════════════════════════════════════════
  */
 @Slf4j
 @Service
@@ -87,7 +96,7 @@ public class CuadreService {
                 .montoEsperado(calculo.getMontoQueDebeTransferir())
                 .montoVendedor(calculo.getMontoParaVendedor())
                 .montoCascada(tipoCuadre == TipoCuadre.GANANCIA && lote.esModelo50_50()
-                        ? calculo.getDisponibleTotal().subtract(calculo.getMontoParaVendedor()) : null)
+                        ? calculo.getMontoQueDebeTransferir() : null)
                 .excedenteAnterior(calculo.getExcedenteAnterior())
                 .excedente(calculo.getExcedenteResultante())
                 .textoWhatsapp(textoWhatsApp)
@@ -118,7 +127,8 @@ public class CuadreService {
                 BigDecimal recaudado = ventaRepository.sumarRecaudadoPorTanda(tanda.getId());
                 BigDecimal inversionSamuel = tanda.getLote().getInversionSamuel();
                 throw new ValidacionNegocioException(
-                        String.format("Recaudado ($%,.0f) insuficiente para inversión Samuel ($%,.0f)",
+                        String.format("Recaudado ($%,.0f) insuficiente para inversión Samuel ($%,.0f). " +
+                                "T1 se cuadra por monto, no por porcentaje de stock.",
                                 recaudado != null ? recaudado : BigDecimal.ZERO, inversionSamuel));
             }
         } else {
@@ -133,21 +143,19 @@ public class CuadreService {
 
     /**
      * Determina el tipo de cuadre según la tanda.
+     * 
+     * T1 = INVERSION (recuperar inversión Samuel)
+     * T2 = GANANCIA (aunque incluye inversión vendedor, el concepto principal es que ya genera ganancias)
+     * T3 = GANANCIA (ganancias puras)
      */
     private TipoCuadre determinarTipoCuadre(Tanda tanda) {
         int numero = tanda.getNumero();
-        int totalTandas = tanda.getTotalTandas();
 
         if (numero == 1) {
-            return TipoCuadre.INVERSION;
-        } else if (totalTandas == 2 && numero == 2) {
-            // T2 de 2 tandas: inversión vendedor + ganancias = mixto, usamos GANANCIA
-            return TipoCuadre.GANANCIA;
-        } else if (totalTandas == 3 && numero == 2) {
-            // T2 de 3 tandas: inversión vendedor = INVERSION
+            // T1: Solo recupera inversión de Samuel
             return TipoCuadre.INVERSION;
         } else {
-            // T3: ganancias puras
+            // T2 y T3: Involucran distribución de ganancias
             return TipoCuadre.GANANCIA;
         }
     }
@@ -164,7 +172,7 @@ public class CuadreService {
             throw new ValidacionNegocioException("El cuadre no está pendiente de confirmación");
         }
 
-        // Si montoEsperado es 0 (como en T2 de inversión vendedor), no validar monto
+        // Si montoEsperado es 0 (recuperación sin ganancias), no validar monto
         if (cuadre.getMontoEsperado().compareTo(BigDecimal.ZERO) > 0) {
             if (request.getMontoRecibido().compareTo(cuadre.getMontoEsperado()) < 0) {
                 throw new ValidacionNegocioException(
@@ -303,7 +311,22 @@ public class CuadreService {
         for (Tanda t : tandas1) {
             if (!cuadreRepository.existsByTandaIdAndEstado(t.getId(), "PENDIENTE")) {
                 if (calculadorService.puedeHacerCuadreTanda1(t)) {
-                    resultado.add(buildDeteccionResponse(t, "Recaudado suficiente para inversión Samuel"));
+                    BigDecimal recaudado = ventaRepository.sumarRecaudadoPorTanda(t.getId());
+                    BigDecimal inversionSamuel = t.getLote().getInversionSamuel();
+                    resultado.add(CuadreResponse.builder()
+                            .tanda(CuadreResponse.TandaInfo.builder()
+                                    .id(t.getId())
+                                    .numero(t.getNumero())
+                                    .descripcion(t.getDescripcion())
+                                    .stockEntregado(t.getStockEntregado())
+                                    .stockActual(t.getStockActual())
+                                    .porcentajeRestante(t.getPorcentajeStockRestante())
+                                    .build())
+                            .tipo(TipoCuadre.INVERSION)
+                            .estado("REQUIERE_CUADRE")
+                            .totalRecaudado(recaudado)
+                            .montoEsperado(inversionSamuel)
+                            .build());
                 }
             }
         }
@@ -312,9 +335,18 @@ public class CuadreService {
         List<Tanda> tandasStock = tandaRepository.findTandasParaCuadrePorStock();
         for (Tanda t : tandasStock) {
             if (!cuadreRepository.existsByTandaIdAndEstado(t.getId(), "PENDIENTE")) {
-                resultado.add(buildDeteccionResponse(t, 
-                        String.format("Stock en %.1f%% (trigger: %d%%)", 
-                                t.getPorcentajeStockRestante(), t.getPorcentajeTrigger())));
+                resultado.add(CuadreResponse.builder()
+                        .tanda(CuadreResponse.TandaInfo.builder()
+                                .id(t.getId())
+                                .numero(t.getNumero())
+                                .descripcion(t.getDescripcion())
+                                .stockEntregado(t.getStockEntregado())
+                                .stockActual(t.getStockActual())
+                                .porcentajeRestante(t.getPorcentajeStockRestante())
+                                .build())
+                        .tipo(TipoCuadre.GANANCIA)
+                        .estado("REQUIERE_CUADRE")
+                        .build());
             }
         }
 
@@ -323,6 +355,7 @@ public class CuadreService {
 
     /**
      * Detecta Tandas 1 en alerta (stock <= 20% pero aún sin suficiente recaudado).
+     * Solo informativo - el cuadre real es por monto recaudado.
      */
     @Transactional(readOnly = true)
     public List<CuadreResponse> detectarAlertas() {
@@ -352,21 +385,6 @@ public class CuadreService {
         }
 
         return alertas;
-    }
-
-    private CuadreResponse buildDeteccionResponse(Tanda t, String mensaje) {
-        return CuadreResponse.builder()
-                .tanda(CuadreResponse.TandaInfo.builder()
-                        .id(t.getId())
-                        .numero(t.getNumero())
-                        .descripcion(t.getDescripcion())
-                        .stockEntregado(t.getStockEntregado())
-                        .stockActual(t.getStockActual())
-                        .porcentajeRestante(t.getPorcentajeStockRestante())
-                        .build())
-                .tipo(t.esTandaInversion() ? TipoCuadre.INVERSION : TipoCuadre.GANANCIA)
-                .estado("REQUIERE_CUADRE")
-                .build();
     }
 
     /**

@@ -32,11 +32,11 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
         AND t.numero > 1
         AND t.stockEntregado > 0
         AND (
-            (l.cantidadTotal < 50 AND t.numero = 2 AND t.stockActual <= (t.stockEntregado * 20 / 100))
+            (l.cantidadTotal <= 50 AND t.numero = 2 AND t.stockActual <= (t.stockEntregado * 20 / 100))
             OR
-            (l.cantidadTotal >= 50 AND t.numero = 2 AND t.stockActual <= (t.stockEntregado * 10 / 100))
+            (l.cantidadTotal > 50 AND t.numero = 2 AND t.stockActual <= (t.stockEntregado * 10 / 100))
             OR
-            (l.cantidadTotal >= 50 AND t.numero = 3 AND t.stockActual <= (t.stockEntregado * 20 / 100))
+            (l.cantidadTotal > 50 AND t.numero = 3 AND t.stockActual <= (t.stockEntregado * 20 / 100))
         )
         """)
     List<Tanda> findTandasParaCuadrePorStock();

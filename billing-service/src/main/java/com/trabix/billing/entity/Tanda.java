@@ -8,16 +8,21 @@ import java.time.LocalDateTime;
 /**
  * Entidad Tanda para billing-service.
  * 
- * TRIGGERS DE CUADRE (según número de tandas):
+ * ═══════════════════════════════════════════════════════════════════
+ * TRIGGERS DE CUADRE:
  * 
- * 2 TANDAS (< 50 TRABIX):
- * - T1: Cuadre cuando recaudado >= inversión Samuel
- * - T2: 20% stock = trigger cuadre
+ * TANDA 1:
+ * - Trigger: Recaudado >= Inversión de Samuel
+ * - NO se cuadra por porcentaje de stock
+ * - 20% stock = solo ALERTA informativa
  * 
- * 3 TANDAS (>= 50 TRABIX):
- * - T1: Cuadre cuando recaudado >= inversión Samuel (20% = solo alerta)
- * - T2: 10% stock = trigger cuadre
- * - T3: 20% stock = trigger cuadre, mini-cuadre cuando stock = 0
+ * 2 TANDAS (≤50 TRABIX):
+ * - T2: 20% stock = trigger cuadre (inversión vendedor + ganancias)
+ * 
+ * 3 TANDAS (>50 TRABIX):
+ * - T2: 10% stock = trigger cuadre (inversión vendedor + ganancias)
+ * - T3: 20% stock = trigger cuadre (ganancias puras)
+ * ═══════════════════════════════════════════════════════════════════
  */
 @Entity
 @Table(name = "tandas")
@@ -90,7 +95,8 @@ public class Tanda {
     /**
      * Verifica si la tanda requiere cuadre por porcentaje de stock.
      * 
-     * NOTA: Tanda 1 NO usa este método - su cuadre es por monto recaudado.
+     * IMPORTANTE: Tanda 1 NO usa este método - su cuadre es por monto recaudado.
+     * Este método solo aplica para Tandas 2+.
      */
     public boolean requiereCuadrePorStock() {
         if (!"LIBERADA".equals(estado)) return false;
@@ -98,14 +104,13 @@ public class Tanda {
         double porcentaje = getPorcentajeStockRestante();
         int totalTandas = getTotalTandas();
 
+        // Tanda 1: NO se cuadra por porcentaje, solo por monto recaudado
         if (numero == 1) {
-            // Tanda 1: NO se cuadra por porcentaje, solo por monto recaudado
-            // Este método retorna false, el cuadre se valida por monto
             return false;
         }
 
         if (totalTandas == 2) {
-            // 2 tandas: T2 es la final
+            // 2 tandas: T2 es la final, trigger al 20%
             return porcentaje <= TANDA_FINAL_CUADRE;
         } else {
             // 3 tandas
@@ -121,7 +126,7 @@ public class Tanda {
 
     /**
      * Verifica si T1 está en nivel de alerta (20% stock).
-     * Solo informativo, cuadre real es por monto.
+     * Solo informativo - cuadre real es por monto, no por stock.
      */
     public boolean tanda1EnAlerta() {
         return numero == 1 && "LIBERADA".equals(estado) 
@@ -129,7 +134,7 @@ public class Tanda {
     }
 
     /**
-     * Verifica si es la primera tanda (cuadre de inversión).
+     * Verifica si es la primera tanda (cuadre de inversión Samuel).
      */
     public boolean esTandaInversion() {
         return numero == 1;
@@ -158,13 +163,13 @@ public class Tanda {
         if (total == 2) {
             return switch (numero) {
                 case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
-                case 2 -> "Tanda 2 (Recuperar inversión vendedor + Ganancias)";
+                case 2 -> "Tanda 2 (Inversión vendedor + Ganancias)";
                 default -> "Tanda " + numero;
             };
         } else {
             return switch (numero) {
                 case 1 -> "Tanda 1 (Recuperar inversión Samuel)";
-                case 2 -> "Tanda 2 (Recuperar inversión vendedor)";
+                case 2 -> "Tanda 2 (Inversión vendedor + Ganancias)";
                 case 3 -> "Tanda 3 (Ganancias puras)";
                 default -> "Tanda " + numero;
             };
@@ -175,7 +180,7 @@ public class Tanda {
      * Obtiene el porcentaje de trigger para esta tanda.
      */
     public int getPorcentajeTrigger() {
-        if (numero == 1) return TANDA1_ALERTA_PORCENTAJE; // Solo alerta
+        if (numero == 1) return TANDA1_ALERTA_PORCENTAJE; // Solo alerta, no trigger real
         if (esTandaIntermedia()) return TANDA2_INTERMEDIA_CUADRE;
         return TANDA_FINAL_CUADRE;
     }

@@ -43,7 +43,7 @@ public class TandaController {
     }
 
     @GetMapping("/pendientes-cuadre")
-    @Operation(summary = "Tandas para cuadre", description = "Lista tandas con stock <= 20%. Solo ADMIN.")
+    @Operation(summary = "Tandas para cuadre", description = "Lista tandas con stock <= umbral%. Solo ADMIN.")
     public ResponseEntity<ApiResponse<List<TandaResponse>>> tandasParaCuadre() {
         List<TandaResponse> response = inventarioService.listarTandasParaCuadre();
         return ResponseEntity.ok(ApiResponse.ok(response));

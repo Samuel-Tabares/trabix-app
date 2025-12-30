@@ -6,13 +6,22 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Entidad Lote - representa un pedido de granizados de un vendedor.
- * Cada lote se divide automáticamente en 3 tandas (40%, 30%, 30%).
+ * 
+ * CORRECCIONES:
+ * - @Version para control de concurrencia optimista
+ * - Inversiones SIEMPRE 50/50 (independiente del modelo de negocio)
+ * - Flags de recuperación de inversión
+ * 
+ * Cada lote se divide automáticamente en tandas:
+ * - < 50 TRABIX = 2 tandas (50% / 50%)
+ * - >= 50 TRABIX = 3 tandas (33.3% / 33.3% / 33.3%)
  */
 @Entity
 @Table(name = "lotes")
@@ -25,6 +34,9 @@ public class Lote {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id", nullable = false)
@@ -48,6 +60,38 @@ public class Lote {
     @Column(nullable = false, length = 20)
     private EstadoLote estado;
 
+    // === INVERSIONES (siempre 50/50) ===
+
+    /**
+     * Inversión total del lote (cantidad × costo percibido).
+     */
+    @Column(name = "inversion_total", precision = 12, scale = 2)
+    private BigDecimal inversionTotal;
+
+    /**
+     * Inversión de Samuel (siempre 50% del lote).
+     */
+    @Column(name = "inversion_samuel", precision = 12, scale = 2)
+    private BigDecimal inversionSamuel;
+
+    /**
+     * Inversión del vendedor (siempre 50% del lote).
+     */
+    @Column(name = "inversion_vendedor", precision = 12, scale = 2)
+    private BigDecimal inversionVendedor;
+
+    /**
+     * true si Samuel ya recuperó su inversión (Tanda 1 completada).
+     */
+    @Column(name = "inversion_samuel_recuperada")
+    private Boolean inversionSamuelRecuperada;
+
+    /**
+     * true si el vendedor ya recuperó su inversión (Tanda 2 completada).
+     */
+    @Column(name = "inversion_vendedor_recuperada")
+    private Boolean inversionVendedorRecuperada;
+
     @OneToMany(mappedBy = "lote", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @OrderBy("numero ASC")
     @ToString.Exclude
@@ -70,6 +114,12 @@ public class Lote {
         if (estado == null) {
             estado = EstadoLote.ACTIVO;
         }
+        if (inversionSamuelRecuperada == null) {
+            inversionSamuelRecuperada = false;
+        }
+        if (inversionVendedorRecuperada == null) {
+            inversionVendedorRecuperada = false;
+        }
     }
 
     @PreUpdate
@@ -78,19 +128,74 @@ public class Lote {
     }
 
     /**
-     * Calcula la inversión total de Samuel en este lote.
-     * Inversión = cantidad * costo real (no percibido)
+     * Calcula las inversiones (llamar al crear el lote).
+     * SIEMPRE 50/50 independiente del modelo de negocio.
      */
-    public BigDecimal calcularInversionSamuel(BigDecimal costoReal) {
-        return costoReal.multiply(BigDecimal.valueOf(cantidadTotal));
+    public void calcularInversiones() {
+        this.inversionTotal = costoPercibidoUnitario.multiply(BigDecimal.valueOf(cantidadTotal));
+        this.inversionSamuel = inversionTotal.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+        this.inversionVendedor = inversionTotal.subtract(inversionSamuel);
+        this.inversionSamuelRecuperada = false;
+        this.inversionVendedorRecuperada = false;
     }
 
     /**
-     * Calcula la inversión percibida del vendedor.
-     * Esto es lo que el vendedor "debe" recuperar primero.
+     * Verifica si es modelo 60/40.
      */
-    public BigDecimal calcularInversionVendedor() {
-        return costoPercibidoUnitario.multiply(BigDecimal.valueOf(cantidadTotal));
+    public boolean esModelo60_40() {
+        return modelo == ModeloNegocio.MODELO_60_40;
+    }
+
+    /**
+     * Verifica si es modelo 50/50.
+     */
+    public boolean esModelo50_50() {
+        return modelo == ModeloNegocio.MODELO_50_50;
+    }
+
+    /**
+     * Obtiene el porcentaje de ganancia del vendedor.
+     */
+    public int getPorcentajeGananciaVendedor() {
+        return esModelo60_40() ? 60 : 50;
+    }
+
+    /**
+     * Obtiene el porcentaje que sube a Samuel.
+     */
+    public int getPorcentajeSamuel() {
+        return esModelo60_40() ? 40 : 50;
+    }
+
+    /**
+     * Determina el número de tandas según la cantidad.
+     * < 50 trabix = 2 tandas
+     * >= 50 trabix = 3 tandas
+     */
+    public int getNumeroTandas() {
+        return cantidadTotal < 50 ? 2 : 3;
+    }
+
+    /**
+     * Marca la inversión de Samuel como recuperada.
+     */
+    public void marcarInversionSamuelRecuperada() {
+        this.inversionSamuelRecuperada = true;
+    }
+
+    /**
+     * Marca la inversión del vendedor como recuperada.
+     */
+    public void marcarInversionVendedorRecuperada() {
+        this.inversionVendedorRecuperada = true;
+    }
+
+    /**
+     * Verifica si ya hay ganancias (ambas inversiones recuperadas).
+     */
+    public boolean hayGanancias() {
+        return Boolean.TRUE.equals(inversionSamuelRecuperada) 
+            && Boolean.TRUE.equals(inversionVendedorRecuperada);
     }
 
     /**

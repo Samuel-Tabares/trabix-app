@@ -12,11 +12,14 @@ import java.util.List;
 /**
  * Entidad Lote para billing-service.
  * 
+ * ═══════════════════════════════════════════════════════════════════
  * INVERSIÓN: SIEMPRE 50/50 (Samuel y vendedor ponen mitad y mitad)
+ *            NO depende del modelo ni del nivel.
+ * ═══════════════════════════════════════════════════════════════════
  * 
  * GANANCIAS (según modelo):
  * - MODELO_60_40 (N2): 60% vendedor, 40% Samuel
- * - MODELO_50_50 (N3+): 50% vendedor, 50% cascada
+ * - MODELO_50_50 (N3+): 50% vendedor, 50% cascada (va a Samuel)
  */
 @Entity
 @Table(name = "lotes")
@@ -40,6 +43,7 @@ public class Lote {
     @Column(name = "costo_percibido_unitario", nullable = false, precision = 10, scale = 2)
     private BigDecimal costoPercibidoUnitario;
 
+    /** Modelo de ganancias: MODELO_60_40 (N2) o MODELO_50_50 (N3+) */
     @Column(nullable = false, length = 20)
     private String modelo;
 
@@ -98,7 +102,7 @@ public class Lote {
     /**
      * Porcentaje de ganancia del vendedor en cuadres de ganancias.
      * - MODELO_60_40: 60% para vendedor
-     * - MODELO_50_50: 50% para vendedor (cascada)
+     * - MODELO_50_50: 50% para vendedor
      */
     public int getPorcentajeGananciaVendedor() {
         return "MODELO_60_40".equals(modelo) ? 60 : 50;
@@ -106,6 +110,8 @@ public class Lote {
 
     /**
      * Porcentaje que sube a Samuel en cuadres de ganancias.
+     * - MODELO_60_40: 40% para Samuel
+     * - MODELO_50_50: 50% para Samuel (él distribuye cascada)
      */
     public int getPorcentajeGananciaSamuel() {
         return "MODELO_60_40".equals(modelo) ? 40 : 50;

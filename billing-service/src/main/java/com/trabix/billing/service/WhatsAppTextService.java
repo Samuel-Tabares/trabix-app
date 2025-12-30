@@ -4,18 +4,18 @@ import com.trabix.billing.dto.CalculoCuadreResponse;
 import com.trabix.billing.entity.Lote;
 import com.trabix.billing.entity.Tanda;
 import com.trabix.billing.entity.Usuario;
-import com.trabix.common.enums.TipoCuadre;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.math.*;
-import java.math.RoundingMode;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
  * Servicio para generar textos listos para enviar por WhatsApp.
+ * 
+ * Genera mensajes claros y bien formateados para cada tipo de cuadre.
  */
 @Slf4j
 @Service
@@ -32,7 +32,7 @@ public class WhatsAppTextService {
         } else if (totalTandas == 2 && numeroTanda == 2) {
             return generarTextoT2_DosTandas(tanda, calculo);
         } else if (totalTandas == 3 && numeroTanda == 2) {
-            return generarTextoInversionVendedor(tanda, calculo);
+            return generarTextoT2_TresTandas(tanda, calculo);
         } else {
             return generarTextoGanancias(tanda, calculo);
         }
@@ -50,30 +50,22 @@ public class WhatsAppTextService {
         sb.append(String.format("🧑 *Vendedor:* %s (%s)\n", vendedor.getNombre(), vendedor.getNivel()));
         sb.append(String.format("📦 *Lote:* #%d (%d unidades)\n", lote.getId(), lote.getCantidadTotal()));
         sb.append(String.format("📊 *Tanda:* 1 de %d\n", totalTandas));
-        sb.append(String.format("💼 *Modelo inversión:* %d/%d\n\n", 
-                lote.getPorcentajeInversionVendedor(), lote.getPorcentajeInversionSamuel()));
+        sb.append("💼 *Modelo inversión:* 50/50 (siempre)\n\n");
         
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
         sb.append(String.format("💰 *RECAUDADO:* $%s\n", formatMoney(calculo.getTotalRecaudado())));
-        
-        if (calculo.getExcedenteAnterior() != null && calculo.getExcedenteAnterior().compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(String.format("➕ *Excedente anterior:* $%s\n", formatMoney(calculo.getExcedenteAnterior())));
-        }
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n\n");
         
         sb.append(String.format("📤 *DEBES PASARME:* $%s\n", formatMoney(calculo.getMontoQueDebeTransferir())));
-        sb.append(String.format("(Inversión de Samuel - %d%%)\n\n", lote.getPorcentajeInversionSamuel()));
-        
-        if (calculo.getMontoParaVendedor() != null && calculo.getMontoParaVendedor().compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(String.format("👤 *Tu parte (excedente):* $%s\n\n", formatMoney(calculo.getMontoParaVendedor())));
-        }
+        sb.append("(Inversión de Samuel - 50%)\n\n");
         
         if (calculo.getExcedenteResultante() != null && calculo.getExcedenteResultante().compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(String.format("✨ *Excedente para siguiente:* $%s\n\n", formatMoney(calculo.getExcedenteResultante())));
+            sb.append(String.format("✨ *Excedente para T2:* $%s\n", formatMoney(calculo.getExcedenteResultante())));
+            sb.append("(Se usará para recuperar tu inversión)\n\n");
         }
         
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append(String.format("✅ Con cuadre exitoso se libera *Tanda 2*\n"));
+        sb.append("✅ Con cuadre exitoso se libera *Tanda 2*\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n\n");
         
         sb.append(String.format("📅 %s\n", LocalDateTime.now().format(FORMATO_FECHA)));
@@ -83,33 +75,53 @@ public class WhatsAppTextService {
     }
 
     /**
-     * Tanda 2 en lotes de 2 tandas: Inversión vendedor + Ganancias.
+     * Tanda 2 en lotes de 2 tandas: Inversión vendedor + Ganancias (FINAL).
      */
     private String generarTextoT2_DosTandas(Tanda tanda, CalculoCuadreResponse calculo) {
         Lote lote = tanda.getLote();
         Usuario vendedor = lote.getUsuario();
+        int porcentajeVendedor = lote.getPorcentajeGananciaVendedor();
+        int porcentajeSamuel = lote.getPorcentajeGananciaSamuel();
 
         StringBuilder sb = new StringBuilder();
         sb.append("■■ CUADRE TANDA 2 (FINAL): INVERSIÓN + GANANCIAS ■■\n\n");
         sb.append(String.format("🧑 *Vendedor:* %s (%s)\n", vendedor.getNombre(), vendedor.getNivel()));
         sb.append(String.format("📦 *Lote:* #%d\n", lote.getId()));
-        sb.append(String.format("📊 *Tanda:* 2 de 2 (FINAL)\n"));
-        sb.append(String.format("💼 *Modelo ganancias:* %s\n\n", 
-                lote.esModelo60_40() ? "60/40" : "50/50 Cascada"));
+        sb.append("📊 *Tanda:* 2 de 2 (FINAL)\n");
+        sb.append(String.format("💼 *Modelo ganancias:* %d/%d\n\n", porcentajeVendedor, porcentajeSamuel));
         
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append(String.format("💰 *RECAUDADO:* $%s\n", formatMoney(calculo.getTotalRecaudado())));
+        sb.append(String.format("💰 *DISPONIBLE:* $%s\n", formatMoney(calculo.getDisponibleTotal())));
         if (calculo.getExcedenteAnterior() != null && calculo.getExcedenteAnterior().compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(String.format("➕ *Excedente anterior:* $%s\n", formatMoney(calculo.getExcedenteAnterior())));
+            sb.append(String.format("  (Incluye excedente T1: $%s)\n", formatMoney(calculo.getExcedenteAnterior())));
         }
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n\n");
 
-        sb.append(String.format("👤 *TU PARTE TOTAL:* $%s\n", formatMoney(calculo.getMontoParaVendedor())));
-        sb.append("(Inversión recuperada + ganancia)\n\n");
+        // Inversión recuperada
+        if (calculo.getInversionVendedor() != null) {
+            sb.append(String.format("✅ *INVERSIÓN RECUPERADA:* $%s\n\n", formatMoney(calculo.getInversionVendedor())));
+        }
 
-        if (calculo.getMontoQueDebeTransferir().compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(String.format("📤 *DEBES PASARME:* $%s\n", formatMoney(calculo.getMontoQueDebeTransferir())));
-            sb.append(String.format("(%d%% de ganancias)\n\n", lote.getPorcentajeGananciaSamuel()));
+        // Ganancias
+        if (calculo.getGananciasBrutas() != null && calculo.getGananciasBrutas().compareTo(BigDecimal.ZERO) > 0) {
+            sb.append(String.format("💰 *GANANCIAS:* $%s\n", formatMoney(calculo.getGananciasBrutas())));
+            sb.append(String.format("📊 Distribución %d/%d:\n", porcentajeVendedor, porcentajeSamuel));
+            
+            BigDecimal tuParte = calculo.getGananciasBrutas()
+                    .multiply(BigDecimal.valueOf(porcentajeVendedor))
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+            BigDecimal parteSamuel = calculo.getGananciasBrutas().subtract(tuParte);
+            
+            sb.append(String.format("  • Tu parte (%d%%): $%s\n", porcentajeVendedor, formatMoney(tuParte)));
+            sb.append(String.format("  • Samuel (%d%%): $%s\n\n", porcentajeSamuel, formatMoney(parteSamuel)));
+        }
+
+        sb.append(String.format("👤 *TOTAL PARA TI:* $%s\n", formatMoney(calculo.getMontoParaVendedor())));
+        sb.append("(Inversión + tu parte de ganancias)\n\n");
+
+        if (calculo.getMontoQueDebeTransferir() != null && calculo.getMontoQueDebeTransferir().compareTo(BigDecimal.ZERO) > 0) {
+            sb.append(String.format("📤 *DEBES PASARME (%d%% ganancias):* $%s\n\n", 
+                    porcentajeSamuel, formatMoney(calculo.getMontoQueDebeTransferir())));
         }
         
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -123,9 +135,9 @@ public class WhatsAppTextService {
     }
 
     /**
-     * Tanda 2 en lotes de 3 tandas: Inversión vendedor + Ganancias.
+     * Tanda 2 en lotes de 3 tandas: Inversión vendedor + Ganancias excedentes.
      */
-    private String generarTextoInversionVendedor(Tanda tanda, CalculoCuadreResponse calculo) {
+    private String generarTextoT2_TresTandas(Tanda tanda, CalculoCuadreResponse calculo) {
         Lote lote = tanda.getLote();
         Usuario vendedor = lote.getUsuario();
         int porcentajeSamuel = lote.getPorcentajeGananciaSamuel();
@@ -135,23 +147,23 @@ public class WhatsAppTextService {
         sb.append("■■ CUADRE TANDA 2: INVERSIÓN + GANANCIAS ■■\n\n");
         sb.append(String.format("🧑 *Vendedor:* %s (%s)\n", vendedor.getNombre(), vendedor.getNivel()));
         sb.append(String.format("📦 *Lote:* #%d\n", lote.getId()));
-        sb.append(String.format("📊 *Tanda:* 2 de 3\n"));
+        sb.append("📊 *Tanda:* 2 de 3\n");
         sb.append(String.format("💼 *Modelo ganancias:* %d/%d\n\n", porcentajeVendedor, porcentajeSamuel));
         
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
         sb.append(String.format("💰 *DISPONIBLE:* $%s\n", formatMoney(calculo.getDisponibleTotal())));
         if (calculo.getExcedenteAnterior() != null && calculo.getExcedenteAnterior().compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(String.format("  (Incluye excedente cuadre 1: $%s)\n", formatMoney(calculo.getExcedenteAnterior())));
+            sb.append(String.format("  (Incluye excedente T1: $%s)\n", formatMoney(calculo.getExcedenteAnterior())));
         }
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n\n");
 
-        // Mostrar inversión recuperada
+        // Inversión recuperada
         if (calculo.getInversionVendedor() != null) {
             sb.append(String.format("✅ *INVERSIÓN RECUPERADA:* $%s\n", formatMoney(calculo.getInversionVendedor())));
             sb.append("🔔 ¡Ya recuperaste tu inversión!\n\n");
         }
 
-        // Mostrar ganancias si hay
+        // Ganancias si hay
         if (calculo.getGananciasBrutas() != null && calculo.getGananciasBrutas().compareTo(BigDecimal.ZERO) > 0) {
             sb.append(String.format("💰 *GANANCIAS:* $%s\n", formatMoney(calculo.getGananciasBrutas())));
             sb.append(String.format("📊 Distribución %d/%d:\n", porcentajeVendedor, porcentajeSamuel));
@@ -171,7 +183,7 @@ public class WhatsAppTextService {
                     porcentajeSamuel, formatMoney(calculo.getMontoQueDebeTransferir())));
         } else {
             sb.append("📤 *NADA QUE TRANSFERIR*\n");
-            sb.append("(Aún recuperando inversión)\n\n");
+            sb.append("(Solo recuperaste tu inversión)\n\n");
         }
         
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -191,35 +203,42 @@ public class WhatsAppTextService {
         Lote lote = tanda.getLote();
         Usuario vendedor = lote.getUsuario();
         boolean esCascada = lote.esModelo50_50();
+        int porcentajeVendedor = lote.getPorcentajeGananciaVendedor();
+        int porcentajeSamuel = lote.getPorcentajeGananciaSamuel();
 
         StringBuilder sb = new StringBuilder();
         sb.append("■■ CUADRE TANDA 3: GANANCIAS PURAS ■■\n\n");
         sb.append(String.format("🧑 *Vendedor:* %s (%s)\n", vendedor.getNombre(), vendedor.getNivel()));
         sb.append(String.format("📦 *Lote:* #%d\n", lote.getId()));
-        sb.append(String.format("📊 *Tanda:* 3 de 3 (FINAL)\n"));
+        sb.append("📊 *Tanda:* 3 de 3 (FINAL)\n");
         sb.append(String.format("💼 *Modelo:* %s\n\n", esCascada ? "50/50 Cascada" : "60/40"));
         
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append(String.format("💰 *GANANCIAS BRUTAS:* $%s\n", formatMoney(calculo.getGananciasBrutas())));
+        sb.append(String.format("💰 *GANANCIAS:* $%s\n", formatMoney(calculo.getGananciasBrutas())));
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n\n");
 
         if (esCascada) {
-            sb.append("📊 *DISTRIBUCIÓN CASCADA:*\n");
-            if (calculo.getDistribucionCascada() != null) {
-                for (CalculoCuadreResponse.DistribucionNivel nivel : calculo.getDistribucionCascada()) {
-                    String icono = nivel.getNivel().equals(vendedor.getNivel()) ? "👤" : "⬆️";
-                    sb.append(String.format("  %s %s (%s): $%s\n", 
-                            icono, nivel.getNombre(), nivel.getNivel(), formatMoney(nivel.getMonto())));
+            sb.append(String.format("📊 *DISTRIBUCIÓN 50/50:*\n"));
+            sb.append(String.format("  👤 Tu parte (50%%): $%s\n", formatMoney(calculo.getMontoParaVendedor())));
+            sb.append(String.format("  ⬆️ Samuel (50%%): $%s\n\n", formatMoney(calculo.getMontoQueDebeTransferir())));
+            
+            // Mostrar distribución cascada informativa
+            if (calculo.getDistribucionCascada() != null && calculo.getDistribucionCascada().size() > 1) {
+                sb.append("📌 *Samuel distribuirá en cascada:*\n");
+                for (int i = 1; i < calculo.getDistribucionCascada().size(); i++) {
+                    CalculoCuadreResponse.DistribucionNivel nivel = calculo.getDistribucionCascada().get(i);
+                    sb.append(String.format("    ⬆️ %s (%s): $%s\n", 
+                            nivel.getNombre(), nivel.getNivel(), formatMoney(nivel.getMonto())));
                 }
+                sb.append("\n");
             }
-            sb.append("\n⚠️ *REGLA CASCADA:* Todo va a Samuel\n");
-            sb.append(String.format("📤 *TRANSFERIR TODO:* $%s\n", formatMoney(calculo.getGananciasBrutas())));
-            sb.append(String.format("📥 *Recibirás de Samuel:* $%s\n\n", formatMoney(calculo.getMontoParaVendedor())));
+            
+            sb.append(String.format("📤 *DEBES PASARME (50%%):* $%s\n\n", formatMoney(calculo.getMontoQueDebeTransferir())));
         } else {
-            sb.append("📊 *DISTRIBUCIÓN 60/40:*\n");
-            sb.append(String.format("  👤 Tu parte (60%%): $%s\n", formatMoney(calculo.getMontoParaVendedor())));
-            sb.append(String.format("  ⬆️ Samuel (40%%): $%s\n\n", formatMoney(calculo.getMontoQueDebeTransferir())));
-            sb.append(String.format("📤 *ME DEBES PASAR (40%%):* $%s\n\n", formatMoney(calculo.getMontoQueDebeTransferir())));
+            sb.append(String.format("📊 *DISTRIBUCIÓN %d/%d:*\n", porcentajeVendedor, porcentajeSamuel));
+            sb.append(String.format("  👤 Tu parte (%d%%): $%s\n", porcentajeVendedor, formatMoney(calculo.getMontoParaVendedor())));
+            sb.append(String.format("  ⬆️ Samuel (%d%%): $%s\n\n", porcentajeSamuel, formatMoney(calculo.getMontoQueDebeTransferir())));
+            sb.append(String.format("📤 *DEBES PASARME (%d%%):* $%s\n\n", porcentajeSamuel, formatMoney(calculo.getMontoQueDebeTransferir())));
         }
 
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -234,6 +253,7 @@ public class WhatsAppTextService {
 
     /**
      * Genera texto de alerta de stock bajo en Tanda 1.
+     * (Solo informativo - T1 se cuadra por monto, no por porcentaje)
      */
     public String generarTextoAlertaStock(Tanda tanda) {
         Lote lote = tanda.getLote();
@@ -253,6 +273,9 @@ public class WhatsAppTextService {
             
             ⚠️ El cuadre se genera cuando el recaudado
             sea >= a la inversión de Samuel.
+            
+            📌 Recuerda: T1 no se cuadra por porcentaje
+            de stock, sino por monto recaudado.
             
             📅 %s
             🍧 TRABIX Granizados""",
