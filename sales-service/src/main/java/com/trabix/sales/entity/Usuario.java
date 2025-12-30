@@ -31,4 +31,13 @@ public class Usuario {
 
     @Column(nullable = false)
     private String estado;
+
+    /**
+     * Calcula el modelo de negocio basado en el nivel.
+     * N2 = 60/40 (directo con admin)
+     * N3+ = 50/50 (cascada)
+     */
+    public String getModeloNegocio() {
+        return "N2".equals(nivel) ? "MODELO_60_40" : "MODELO_50_50";
+    }
 }

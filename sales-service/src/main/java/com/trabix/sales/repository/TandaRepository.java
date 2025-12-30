@@ -64,4 +64,3 @@ public interface TandaRepository extends JpaRepository<Tanda, Long> {
      */
     int countByLoteId(Long loteId);
 }
-

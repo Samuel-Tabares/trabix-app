@@ -10,6 +10,10 @@ import java.math.BigDecimal;
 
 /**
  * Resumen de ventas de un vendedor o tanda.
+ * 
+ * NOMENCLATURA CORREGIDA:
+ * - parteVendedor/parteSamuel: División del recaudado (NO son ganancias hasta recuperar inversión)
+ * - gananciaRealVendedor/gananciaRealSamuel: Solo cuando esGanancia=true
  */
 @Data
 @Builder
@@ -23,17 +27,53 @@ public class ResumenVentasResponse {
     private Integer totalUnidadesVendidas;
     private BigDecimal totalRecaudado;
 
-    // === GANANCIAS ===
+    // === PARTES (División del recaudado - NO son ganancias hasta recuperar inversión) ===
     
     /**
-     * Total de ganancias del vendedor (suma de gananciaVendedor de todas las ventas).
+     * Total parte del vendedor (60% o 50% según modelo).
+     * NOTA: NO es ganancia real hasta que se recupere la inversión.
      */
-    private BigDecimal totalGananciaVendedor;
+    private BigDecimal totalParteVendedor;
     
     /**
-     * Total que sube a Samuel (suma de parteSamuel de todas las ventas).
+     * Total parte que sube a Samuel (40% o 50% según modelo).
+     * NOTA: NO es ganancia real hasta que se recupere la inversión.
      */
     private BigDecimal totalParteSamuel;
+
+    // === GANANCIAS REALES (Solo cuando esGanancia=true) ===
+    
+    /**
+     * Ganancia real del vendedor (solo ventas donde esGanancia=true).
+     */
+    private BigDecimal gananciaRealVendedor;
+    
+    /**
+     * Ganancia real de Samuel (solo ventas donde esGanancia=true).
+     */
+    private BigDecimal gananciaRealSamuel;
+
+    // === INVERSIONES ===
+    
+    /**
+     * Inversión total del vendedor en sus lotes activos.
+     */
+    private BigDecimal inversionVendedor;
+    
+    /**
+     * Inversión total de Samuel en los lotes del vendedor.
+     */
+    private BigDecimal inversionSamuel;
+    
+    /**
+     * true si ya recuperó su inversión.
+     */
+    private Boolean inversionVendedorRecuperada;
+    
+    /**
+     * true si Samuel ya recuperó su inversión.
+     */
+    private Boolean inversionSamuelRecuperada;
 
     // Por tipo de venta
     private Integer ventasUnidad;

@@ -13,6 +13,10 @@ import java.time.LocalDateTime;
 
 /**
  * Respuesta con datos de una venta.
+ * 
+ * NOMENCLATURA CORREGIDA:
+ * - parteVendedor/parteSamuel: División del recaudado (NO son ganancias hasta recuperar inversión)
+ * - esGanancia: true solo cuando AMBAS inversiones (Samuel y vendedor) están recuperadas
  */
 @Data
 @Builder
@@ -30,7 +34,7 @@ public class VentaResponse {
     private BigDecimal precioUnitario;
     private BigDecimal precioTotal;
     
-    // === Información de ganancias ===
+    // === Información de distribución ===
     
     /**
      * Modelo de negocio aplicado (MODELO_60_40 o MODELO_50_50).
@@ -38,14 +42,21 @@ public class VentaResponse {
     private String modeloNegocio;
     
     /**
-     * Ganancia del vendedor (60% o 50%).
+     * Parte del vendedor (60% o 50%).
+     * NOTA: NO es ganancia real hasta que se recuperen ambas inversiones.
      */
-    private BigDecimal gananciaVendedor;
+    private BigDecimal parteVendedor;
     
     /**
      * Parte que sube a Samuel (40% o 50%).
+     * NOTA: NO es ganancia real hasta que se recuperen ambas inversiones.
      */
     private BigDecimal parteSamuel;
+    
+    /**
+     * true si esta venta ya es ganancia real (ambas inversiones recuperadas).
+     */
+    private Boolean esGanancia;
     
     private EstadoVenta estado;
     private LocalDateTime fechaRegistro;
@@ -61,6 +72,7 @@ public class VentaResponse {
         private String nombre;
         private String cedula;
         private String nivel;
+        private String modeloNegocio;
     }
 
     @Data
@@ -83,6 +95,33 @@ public class VentaResponse {
          * Porcentaje de ganancia del vendedor (60 o 50).
          */
         private Integer porcentajeGananciaVendedor;
+        
+        // === Información de inversiones ===
+        
+        /**
+         * Inversión total del lote (cantidad × costo percibido).
+         */
+        private BigDecimal inversionTotal;
+        
+        /**
+         * Inversión de Samuel (50% del lote).
+         */
+        private BigDecimal inversionSamuel;
+        
+        /**
+         * Inversión del vendedor (50% del lote).
+         */
+        private BigDecimal inversionVendedor;
+        
+        /**
+         * true si Samuel ya recuperó su inversión.
+         */
+        private Boolean inversionSamuelRecuperada;
+        
+        /**
+         * true si el vendedor ya recuperó su inversión.
+         */
+        private Boolean inversionVendedorRecuperada;
     }
 
     @Data
@@ -97,6 +136,21 @@ public class VentaResponse {
         private Integer stockEntregado;
         private Double porcentajeRestante;
         private String estado;
+        
+        /**
+         * Excedente de dinero de la tanda anterior.
+         */
+        private BigDecimal excedenteDinero;
+        
+        /**
+         * Excedente de trabix de la tanda anterior.
+         */
+        private Integer excedenteTrabix;
+        
+        /**
+         * Total recaudado en esta tanda.
+         */
+        private BigDecimal totalRecaudado;
         
         /**
          * true si la tanda está cerca del umbral de cuadre.

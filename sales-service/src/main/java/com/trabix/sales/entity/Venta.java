@@ -11,6 +11,10 @@ import java.time.LocalDateTime;
 /**
  * Entidad Venta - representa una venta de granizados.
  * 
+ * NOMENCLATURA CORREGIDA:
+ * - parteVendedor/parteSamuel: División del recaudado (NO son ganancias hasta recuperar inversión)
+ * - esGanancia: true solo cuando AMBAS inversiones están recuperadas
+ * 
  * Tipos de venta:
  * - UNIDAD: $8,000 (con licor)
  * - PROMO: $6,000 c/u (2x$12,000)
@@ -34,6 +38,9 @@ public class Venta {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id", nullable = false)
@@ -65,16 +72,26 @@ public class Venta {
     private String modeloNegocio;
 
     /**
-     * Ganancia del vendedor (60% o 50% según modelo).
+     * Parte del vendedor (60% o 50% según modelo).
+     * NOTA: NO es ganancia real hasta que se recuperen ambas inversiones.
      */
-    @Column(name = "ganancia_vendedor", precision = 10, scale = 2)
-    private BigDecimal gananciaVendedor;
+    @Column(name = "parte_vendedor", precision = 10, scale = 2)
+    private BigDecimal parteVendedor;
 
     /**
      * Parte que sube a Samuel (40% o 50% según modelo).
+     * NOTA: NO es ganancia real hasta que se recuperen ambas inversiones.
      */
     @Column(name = "parte_samuel", precision = 10, scale = 2)
     private BigDecimal parteSamuel;
+
+    /**
+     * true si esta venta ya es ganancia real (ambas inversiones recuperadas).
+     * Se marca como true cuando el lote tiene inversionSamuelRecuperada=true 
+     * AND inversionVendedorRecuperada=true.
+     */
+    @Column(name = "es_ganancia")
+    private Boolean esGanancia;
 
     @Column(name = "fecha_registro", nullable = false)
     private LocalDateTime fechaRegistro;
@@ -105,6 +122,9 @@ public class Venta {
         if (estado == null) {
             estado = EstadoVenta.PENDIENTE;
         }
+        if (esGanancia == null) {
+            esGanancia = false;
+        }
     }
 
     @PreUpdate
@@ -126,6 +146,13 @@ public class Venta {
     public void rechazar(String motivo) {
         this.estado = EstadoVenta.RECHAZADA;
         this.nota = (this.nota != null ? this.nota + " | " : "") + "Rechazada: " + motivo;
+    }
+
+    /**
+     * Marca la venta como ganancia real.
+     */
+    public void marcarComoGanancia() {
+        this.esGanancia = true;
     }
 
     /**

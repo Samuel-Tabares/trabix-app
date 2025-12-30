@@ -223,7 +223,7 @@ public class UsuarioController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
-    // === Métoddo auxiliar ===
+    // === Método auxiliar ===
     
     /**
      * Verifica si un usuario está en la cadena de reclutados de otro (toda la cadena hacia abajo).

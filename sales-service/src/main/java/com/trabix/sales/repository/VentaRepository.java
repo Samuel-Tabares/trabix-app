@@ -6,6 +6,7 @@ import com.trabix.sales.entity.Venta;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -119,15 +120,23 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
         """)
     List<Object[]> obtenerEstadisticasPorTipo(@Param("usuarioId") Long usuarioId);
 
-    // Sumar ganancias del vendedor
+    // === PARTES (División del recaudado - NO son ganancias hasta recuperar inversión) ===
+
+    /**
+     * Suma la parte del vendedor de todas las ventas aprobadas.
+     * NOTA: NO es ganancia real hasta que se recupere la inversión.
+     */
     @Query("""
-        SELECT COALESCE(SUM(v.gananciaVendedor), 0) FROM Venta v 
+        SELECT COALESCE(SUM(v.parteVendedor), 0) FROM Venta v 
         WHERE v.usuario.id = :usuarioId 
         AND v.estado = 'APROBADA'
         """)
-    BigDecimal sumarGananciaVendedor(@Param("usuarioId") Long usuarioId);
+    BigDecimal sumarParteVendedor(@Param("usuarioId") Long usuarioId);
 
-    // Sumar parte de Samuel
+    /**
+     * Suma la parte de Samuel de todas las ventas aprobadas.
+     * NOTA: NO es ganancia real hasta que se recupere la inversión.
+     */
     @Query("""
         SELECT COALESCE(SUM(v.parteSamuel), 0) FROM Venta v 
         WHERE v.usuario.id = :usuarioId 
@@ -135,12 +144,58 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
         """)
     BigDecimal sumarParteSamuel(@Param("usuarioId") Long usuarioId);
 
-    // Sumar ganancias por tanda
+    // === GANANCIAS REALES (Solo ventas donde esGanancia=true) ===
+
+    /**
+     * Suma la ganancia real del vendedor (solo ventas donde esGanancia=true).
+     */
     @Query("""
-        SELECT COALESCE(SUM(v.gananciaVendedor), 0), COALESCE(SUM(v.parteSamuel), 0)
+        SELECT COALESCE(SUM(v.parteVendedor), 0) FROM Venta v 
+        WHERE v.usuario.id = :usuarioId 
+        AND v.estado = 'APROBADA'
+        AND v.esGanancia = true
+        """)
+    BigDecimal sumarGananciaRealVendedor(@Param("usuarioId") Long usuarioId);
+
+    /**
+     * Suma la ganancia real de Samuel (solo ventas donde esGanancia=true).
+     */
+    @Query("""
+        SELECT COALESCE(SUM(v.parteSamuel), 0) FROM Venta v 
+        WHERE v.usuario.id = :usuarioId 
+        AND v.estado = 'APROBADA'
+        AND v.esGanancia = true
+        """)
+    BigDecimal sumarGananciaRealSamuel(@Param("usuarioId") Long usuarioId);
+
+    // === PARTES POR TANDA ===
+
+    /**
+     * Suma partes por tanda.
+     * Retorna [parteVendedor, parteSamuel]
+     */
+    @Query("""
+        SELECT COALESCE(SUM(v.parteVendedor), 0), COALESCE(SUM(v.parteSamuel), 0)
         FROM Venta v 
         WHERE v.tanda.id = :tandaId 
         AND v.estado = 'APROBADA'
         """)
-    Object[] sumarGananciasPorTanda(@Param("tandaId") Long tandaId);
+    Object[] sumarPartesPorTanda(@Param("tandaId") Long tandaId);
+
+    // === ACTUALIZACIÓN MASIVA ===
+
+    /**
+     * Marca todas las ventas de un lote como ganancia.
+     * Se llama cuando se recuperan AMBAS inversiones.
+     */
+    @Modifying
+    @Query("""
+        UPDATE Venta v SET v.esGanancia = true 
+        WHERE v.tanda.id IN (
+            SELECT t.id FROM Tanda t WHERE t.loteId = :loteId
+        )
+        AND v.estado = 'APROBADA'
+        AND v.esGanancia = false
+        """)
+    int marcarVentasComoGanancia(@Param("loteId") Long loteId);
 }
