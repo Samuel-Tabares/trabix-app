@@ -46,7 +46,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Redis para caché de tokens -->
+        <!-- Redis para caché de tokens y bloqueo de intentos -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>

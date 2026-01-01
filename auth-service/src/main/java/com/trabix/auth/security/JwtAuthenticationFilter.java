@@ -54,16 +54,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         .orElse(null);
 
                 if (usuario != null && jwtService.esTokenValido(jwt, usuario)) {
+                    // Verificar que no esté bloqueado
+                    if (usuario.estaBloqueado()) {
+                        log.warn("Intento de acceso con cuenta bloqueada: {}", cedula);
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
+
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(
                                     usuario,
                                     null,
                                     usuario.getAuthorities()
                             );
-                    
+
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    
+
                     log.debug("Usuario autenticado: {} - Rol: {}", cedula, usuario.getRol());
                 }
             }

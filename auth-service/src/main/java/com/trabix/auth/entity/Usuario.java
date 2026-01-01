@@ -14,6 +14,15 @@ import java.util.List;
 
 /**
  * Entidad Usuario - representa vendedores, reclutadores y admin.
+ * 
+ * NIVELES:
+ * - N1: Admin (Samuel)
+ * - N2: Vendedor directo de Samuel (modelo 60/40)
+ * - N3+: Vendedor en cascada (modelo 50/50)
+ * 
+ * ROLES:
+ * - ADMIN: Acceso total
+ * - VENDEDOR: Acceso limitado a sus operaciones
  */
 @Entity
 @Table(name = "usuarios")
@@ -46,11 +55,13 @@ public class Usuario implements UserDetails {
     @Column(nullable = false)
     private RolUsuario rol;
 
+    /** Nivel en la jerarquía: N1, N2, N3, etc. */
     @Column(nullable = false, length = 10)
     private String nivel;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reclutador_id")
+    @ToString.Exclude
     private Usuario reclutador;
 
     @Column(name = "fecha_ingreso", nullable = false)
@@ -59,6 +70,19 @@ public class Usuario implements UserDetails {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EstadoUsuario estado;
+
+    /** Contador de intentos fallidos de login */
+    @Column(name = "intentos_fallidos")
+    @Builder.Default
+    private Integer intentosFallidos = 0;
+
+    /** Fecha hasta la cual la cuenta está bloqueada */
+    @Column(name = "bloqueado_hasta")
+    private LocalDateTime bloqueadoHasta;
+
+    /** Fecha del último login exitoso */
+    @Column(name = "ultimo_login")
+    private LocalDateTime ultimoLogin;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -76,11 +100,72 @@ public class Usuario implements UserDetails {
         if (estado == null) {
             estado = EstadoUsuario.ACTIVO;
         }
+        if (intentosFallidos == null) {
+            intentosFallidos = 0;
+        }
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+    }
+
+    // === Métodos de negocio ===
+
+    /**
+     * Verifica si la cuenta está temporalmente bloqueada.
+     */
+    public boolean estaBloqueado() {
+        if (bloqueadoHasta == null) return false;
+        if (LocalDateTime.now().isAfter(bloqueadoHasta)) {
+            // El bloqueo ha expirado
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Incrementa el contador de intentos fallidos.
+     */
+    public void incrementarIntentosFallidos() {
+        this.intentosFallidos = (this.intentosFallidos == null ? 0 : this.intentosFallidos) + 1;
+    }
+
+    /**
+     * Resetea los intentos fallidos (después de login exitoso).
+     */
+    public void resetearIntentosFallidos() {
+        this.intentosFallidos = 0;
+        this.bloqueadoHasta = null;
+    }
+
+    /**
+     * Bloquea la cuenta por un período de tiempo.
+     */
+    public void bloquearCuenta(int minutos) {
+        this.bloqueadoHasta = LocalDateTime.now().plusMinutes(minutos);
+    }
+
+    /**
+     * Registra un login exitoso.
+     */
+    public void registrarLoginExitoso() {
+        this.ultimoLogin = LocalDateTime.now();
+        resetearIntentosFallidos();
+    }
+
+    /**
+     * Determina el modelo de negocio según el nivel.
+     */
+    public String getModeloNegocio() {
+        return "N2".equals(nivel) ? "MODELO_60_40" : "MODELO_50_50";
+    }
+
+    /**
+     * Verifica si es admin.
+     */
+    public boolean esAdmin() {
+        return rol == RolUsuario.ADMIN || "N1".equals(nivel);
     }
 
     // === Implementación de UserDetails ===
@@ -107,7 +192,7 @@ public class Usuario implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return estado == EstadoUsuario.ACTIVO;
+        return estado == EstadoUsuario.ACTIVO && !estaBloqueado();
     }
 
     @Override

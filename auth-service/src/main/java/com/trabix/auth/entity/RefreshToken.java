@@ -22,6 +22,7 @@ public class RefreshToken {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id", nullable = false)
+    @ToString.Exclude
     private Usuario usuario;
 
     @Column(nullable = false, unique = true, length = 500)
@@ -31,7 +32,16 @@ public class RefreshToken {
     private LocalDateTime fechaExpiracion;
 
     @Column(nullable = false)
-    private Boolean revocado;
+    @Builder.Default
+    private Boolean revocado = false;
+
+    /** IP desde donde se generó el token */
+    @Column(name = "ip_address", length = 50)
+    private String ipAddress;
+
+    /** User-Agent del dispositivo */
+    @Column(name = "user_agent", length = 255)
+    private String userAgent;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -44,11 +54,24 @@ public class RefreshToken {
         }
     }
 
+    /**
+     * Verifica si el token ha expirado.
+     */
     public boolean isExpirado() {
         return LocalDateTime.now().isAfter(fechaExpiracion);
     }
 
+    /**
+     * Verifica si el token es válido (no revocado y no expirado).
+     */
     public boolean isValido() {
         return !revocado && !isExpirado();
+    }
+
+    /**
+     * Revoca el token.
+     */
+    public void revocar() {
+        this.revocado = true;
     }
 }

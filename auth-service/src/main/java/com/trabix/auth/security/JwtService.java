@@ -41,6 +41,7 @@ public class JwtService {
         claims.put("rol", usuario.getRol().name());
         claims.put("nivel", usuario.getNivel());
         claims.put("nombre", usuario.getNombre());
+        claims.put("userId", usuario.getId());
         
         return generarToken(claims, usuario.getCedula(), jwtExpiration);
     }
@@ -49,7 +50,11 @@ public class JwtService {
      * Genera un refresh token para el usuario.
      */
     public String generarRefreshToken(Usuario usuario) {
-        return generarToken(new HashMap<>(), usuario.getCedula(), refreshExpiration);
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("type", "refresh");
+        claims.put("userId", usuario.getId());
+        
+        return generarToken(claims, usuario.getCedula(), refreshExpiration);
     }
 
     /**
@@ -87,6 +92,13 @@ public class JwtService {
     }
 
     /**
+     * Extrae el ID de usuario del token.
+     */
+    public Long extraerUserId(String token) {
+        return extraerClaims(token).get("userId", Long.class);
+    }
+
+    /**
      * Verifica si el token es válido para el usuario.
      */
     public boolean esTokenValido(String token, Usuario usuario) {
@@ -100,10 +112,27 @@ public class JwtService {
     }
 
     /**
+     * Verifica si el token es válido (sin verificar usuario específico).
+     */
+    public boolean esTokenValido(String token) {
+        try {
+            extraerClaims(token);
+            return !esTokenExpirado(token);
+        } catch (Exception e) {
+            log.warn("Token inválido: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Verifica si el token ha expirado.
      */
     public boolean esTokenExpirado(String token) {
-        return extraerExpiracion(token).before(new Date());
+        try {
+            return extraerExpiracion(token).before(new Date());
+        } catch (ExpiredJwtException e) {
+            return true;
+        }
     }
 
     /**
@@ -125,14 +154,14 @@ public class JwtService {
     }
 
     /**
-     * Obtiene el tiempo de expiración del access token.
+     * Obtiene el tiempo de expiración del access token en milisegundos.
      */
     public long getJwtExpiration() {
         return jwtExpiration;
     }
 
     /**
-     * Obtiene el tiempo de expiración del refresh token.
+     * Obtiene el tiempo de expiración del refresh token en milisegundos.
      */
     public long getRefreshExpiration() {
         return refreshExpiration;

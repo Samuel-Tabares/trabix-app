@@ -13,7 +13,7 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     show-sql: false
     properties:
       hibernate:
@@ -24,23 +24,64 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:trabix_redis_2024}
+      password: ${REDIS_PASSWORD:}
 
+# ═══════════════════════════════════════════════════════════════════
 # Configuración JWT
+# ═══════════════════════════════════════════════════════════════════
 jwt:
-  secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits}
-  expiration: 900000        # 15 minutos en milisegundos
+  secret: ${JWT_SECRET:clave_secreta_muy_larga_para_desarrollo_local_trabix_2024_minimo_256_bits_para_seguridad}
+  expiration: 900000           # 15 minutos en milisegundos
   refresh-expiration: 604800000  # 7 días en milisegundos
 
-# OpenAPI
+# ═══════════════════════════════════════════════════════════════════
+# Configuración de seguridad TRABIX
+# ═══════════════════════════════════════════════════════════════════
+trabix:
+  security:
+    # Máximo de intentos de login antes de bloquear
+    max-intentos-login: 5
+    # Minutos de bloqueo después de exceder intentos
+    bloqueo-minutos: 15
+    # Máximo de sesiones activas por usuario
+    max-sesiones-activas: 5
+  
+  # Configuración CORS
+  cors:
+    # Orígenes permitidos (separados por coma)
+    # En producción, especificar dominios reales
+    allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:4200,http://localhost:8080}
+    allow-credentials: true
+
+# ═══════════════════════════════════════════════════════════════════
+# OpenAPI / Swagger
+# ═══════════════════════════════════════════════════════════════════
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+    operationsSorter: method
 
+# ═══════════════════════════════════════════════════════════════════
 # Logging
+# ═══════════════════════════════════════════════════════════════════
 logging:
   level:
     com.trabix: DEBUG
     org.springframework.security: INFO
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# ═══════════════════════════════════════════════════════════════════
+# Actuator (monitoreo)
+# ═══════════════════════════════════════════════════════════════════
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized

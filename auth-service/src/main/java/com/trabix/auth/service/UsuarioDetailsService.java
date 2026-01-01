@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Servicio para cargar usuarios por cédula.
+ * Usado por Spring Security para autenticación.
  */
 @Service
 @RequiredArgsConstructor

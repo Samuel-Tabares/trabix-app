@@ -2,6 +2,7 @@ package com.trabix.auth.config;
 
 import com.trabix.auth.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,6 +28,10 @@ import java.util.List;
 
 /**
  * Configuración de seguridad para auth-service.
+ * 
+ * CORS configurable por ambiente:
+ * - Desarrollo: permite localhost
+ * - Producción: solo dominios específicos
  */
 @Configuration
 @EnableWebSecurity
@@ -37,20 +42,27 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
 
+    @Value("${trabix.cors.allowed-origins:http://localhost:3000,http://localhost:4200}")
+    private String allowedOrigins;
+
+    @Value("${trabix.cors.allow-credentials:true}")
+    private boolean allowCredentials;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
-                // Endpoints públicos
+                // Endpoints públicos (sin autenticación)
                 .requestMatchers(
                     "/auth/login",
                     "/auth/refresh",
                     "/api-docs/**",
                     "/swagger-ui/**",
                     "/swagger-ui.html",
-                    "/actuator/health"
+                    "/actuator/health",
+                    "/error"
                 ).permitAll()
                 // Endpoints de admin
                 .requestMatchers("/admin/**").hasRole("ADMIN")
@@ -71,6 +83,8 @@ public class SecurityConfig {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
+        // Ocultar mensaje específico de "usuario no encontrado" por seguridad
+        authProvider.setHideUserNotFoundExceptions(true);
         return authProvider;
     }
 
@@ -81,17 +95,43 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder(12); // Factor de costo 12 (más seguro)
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("*")); // En producción, especificar dominios
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(List.of("Authorization"));
         
+        // Parsear orígenes permitidos desde configuración
+        List<String> origins = Arrays.asList(allowedOrigins.split(","));
+        configuration.setAllowedOrigins(origins);
+        
+        // Métodos HTTP permitidos
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        
+        // Headers permitidos
+        configuration.setAllowedHeaders(Arrays.asList(
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "Origin",
+            "X-Requested-With"
+        ));
+        
+        // Headers expuestos al cliente
+        configuration.setExposedHeaders(Arrays.asList(
+            "Authorization",
+            "X-Total-Count",
+            "X-Page-Number",
+            "X-Page-Size"
+        ));
+        
+        // Permitir credenciales (cookies, authorization headers)
+        configuration.setAllowCredentials(allowCredentials);
+        
+        // Tiempo de caché para preflight requests (1 hora)
+        configuration.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
